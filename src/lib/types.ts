@@ -61,11 +61,16 @@ export interface ScrapedJob {
     max: number;
     currency: string;
   } | null;
-  url: string;
+  url: string; // Jobright URL
+  applyUrl?: string; // Direct company application URL
   h1bSponsorship: boolean | null;
   applicantCount: string;
   postedAt: string;
   scrapedAt: Date;
+  // Jobright-specific fields from API
+  matchScore?: number; // Jobright's match score (0-100)
+  rankDesc?: string; // "Strong Match", "Good Match", etc.
+  jobSummary?: string; // Job description summary
 }
 
 export interface JobMatch {

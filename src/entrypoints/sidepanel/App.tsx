@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useResumes } from '../../hooks/useResumes';
+import { useJobs } from '../../hooks/useJobs';
 import { AuthScreen } from '../../components/AuthScreen';
 import { ResumeUploader } from '../../components/ResumeUploader';
 import { ResumeList } from '../../components/ResumeList';
+import { JobList } from '../../components/JobList';
 import { parseResumePDF, isGeminiInitialized } from '../../lib/gemini';
+import type { ScrapedJob } from '../../lib/types';
 
 type Tab = 'jobs' | 'resumes' | 'settings';
 
@@ -99,30 +102,71 @@ function App() {
 }
 
 function JobsTab() {
+  const { jobs, loading, error, refreshJobs, clearJobs } = useJobs();
+
+  const handleJobClick = (job: ScrapedJob) => {
+    // Open job in new tab
+    window.open(job.url, '_blank');
+  };
+
   return (
-    <div className="p-6 text-center">
-      <div className="max-w-md mx-auto">
-        <div className="text-6xl mb-4">🔍</div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">No Jobs Scanned Yet</h2>
-        <p className="text-gray-600 mb-6">
-          Navigate to a Jobright job search or recommended jobs page to start scanning.
-        </p>
-        <a
-          href="https://jobright.ai/jobs"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Go to Jobright
-        </a>
-        <div className="mt-8 text-sm text-gray-500">
-          <p>Jobs will be implemented in Phase 3-5:</p>
-          <ul className="mt-2 space-y-1 text-left">
-            <li>• Phase 3: Job scraping from Jobright pages</li>
-            <li>• Phase 4: AI matching and categorization</li>
-            <li>• Phase 5: Job list UI with filters</li>
-          </ul>
+    <div className="p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Scanned Jobs</h2>
+            <p className="text-gray-600 mt-1">
+              {jobs.length > 0
+                ? `${jobs.length} jobs found from Jobright`
+                : 'No jobs scanned yet'}
+            </p>
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={refreshJobs}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
+            
+            {jobs.length > 0 && (
+              <button
+                onClick={clearJobs}
+                className="px-4 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
         </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {/* Job List */}
+        <JobList jobs={jobs} onJobClick={handleJobClick} loading={loading} />
+        
+        {/* Phase 4-5 Notice */}
+        {jobs.length > 0 && (
+          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+            <p className="font-medium mb-1">Coming in Phase 4-5:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>AI-powered job matching with your resumes</li>
+              <li>Smart categorization (Safe Apply / Moderate / Don't Apply)</li>
+              <li>Resume recommendations for each job</li>
+              <li>Match score and detailed analysis</li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

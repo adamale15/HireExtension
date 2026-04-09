@@ -1,3 +1,5 @@
+import { STORAGE_KEYS } from '../lib/types';
+
 export default defineBackground(() => {
   console.log('HireExtension background worker started');
 
@@ -34,12 +36,29 @@ export default defineBackground(() => {
   async function handleJobsScraped(jobs: any[]) {
     console.log(`Received ${jobs.length} scraped jobs`);
     
-    // Store jobs in local storage
-    await browser.storage.local.set({ scraped_jobs: jobs });
+    // Store jobs in local storage with timestamp
+    await browser.storage.local.set({ 
+      [STORAGE_KEYS.SCRAPED_JOBS]: jobs,
+      [STORAGE_KEYS.LAST_SCRAPE_TIME]: new Date().toISOString()
+    });
     
     // Update badge with job count
-    await browser.action.setBadgeText({ text: jobs.length.toString() });
-    await browser.action.setBadgeBackgroundColor({ color: '#3b82f6' });
+    const text = jobs.length > 0 ? jobs.length.toString() : '';
+    const color = jobs.length > 0 ? '#4F46E5' : '#9CA3AF';
+    
+    await browser.action.setBadgeText({ text });
+    await browser.action.setBadgeBackgroundColor({ color });
+    
+    // Notify UI components that jobs have been updated
+    try {
+      await browser.runtime.sendMessage({
+        type: 'JOBS_UPDATED',
+        payload: jobs
+      });
+    } catch (err) {
+      // No listeners, that's okay
+      console.log('No receivers for JOBS_UPDATED');
+    }
   }
 
   async function handleAnalyzeJobs(payload: { jobs: any[]; resumes: any[] }) {

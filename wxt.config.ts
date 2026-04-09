@@ -16,7 +16,7 @@ export default defineConfig({
     },
   },
   runner: {
-    startUrls: ["https://jobright.ai/jobs"],
+    startUrls: ["https://jobright.ai/jobs/recommend"],
   },
   vite: () => ({
     plugins: [
