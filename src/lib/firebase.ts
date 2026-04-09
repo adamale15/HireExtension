@@ -3,7 +3,10 @@ import {
   getAuth, 
   Auth, 
   GoogleAuthProvider, 
+  signInWithCredential,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User as FirebaseUser
@@ -20,7 +23,10 @@ import {
   query,
   where,
   getDocs,
-  Timestamp
+  Timestamp,
+  enableIndexedDbPersistence,
+  initializeFirestore,
+  CACHE_SIZE_UNLIMITED
 } from 'firebase/firestore';
 import { 
   getStorage, 
@@ -51,21 +57,66 @@ export function initializeFirebase() {
   if (!app) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
-    db = getFirestore(app);
+    
+    // Initialize Firestore with offline persistence
+    db = initializeFirestore(app, {
+      cacheSizeBytes: CACHE_SIZE_UNLIMITED
+    });
+    
+    // Enable offline persistence for Chrome extensions
+    enableIndexedDbPersistence(db).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Firestore: Multiple tabs open, persistence enabled in first tab only');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Firestore: Persistence not available in this browser');
+      }
+    });
+    
     storage = getStorage(app);
   }
   return { app, auth, db, storage };
 }
 
-// Auth functions
+// Auth functions - Using popup auth which works better for extensions in dev mode
 export async function signInWithGoogle(): Promise<FirebaseUser> {
   const { auth } = initializeFirebase();
-  const provider = new GoogleAuthProvider();
-  provider.addScope('email');
-  provider.addScope('profile');
   
-  const result = await signInWithPopup(auth, provider);
-  return result.user;
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.addScope('email');
+    provider.addScope('profile');
+    
+    // Use popup auth - this opens in a new window which Google allows
+    const result = await signInWithPopup(auth, provider);
+    console.log('Successfully signed in with Google');
+    return result.user;
+  } catch (error: any) {
+    console.error('Google sign-in error:', error);
+    throw new Error(error.message || 'Failed to sign in with Google');
+  }
+}
+
+// Email/Password authentication as backup
+export async function signInWithEmail(email: string, password: string): Promise<FirebaseUser> {
+  const { auth } = initializeFirebase();
+  try {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    return result.user;
+  } catch (error: any) {
+    console.error('Email sign-in error:', error);
+    throw new Error(error.message || 'Failed to sign in');
+  }
+}
+
+export async function signUpWithEmail(email: string, password: string): Promise<FirebaseUser> {
+  const { auth } = initializeFirebase();
+  try {
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    return result.user;
+  } catch (error: any) {
+    console.error('Email sign-up error:', error);
+    throw new Error(error.message || 'Failed to create account');
+  }
 }
 
 export async function signOut(): Promise<void> {
@@ -95,27 +146,51 @@ export async function createUser(firebaseUser: FirebaseUser): Promise<User> {
     updatedAt: new Date()
   };
   
-  await setDoc(doc(db, 'users', user.uid), {
-    ...user,
-    createdAt: Timestamp.fromDate(user.createdAt),
-    updatedAt: Timestamp.fromDate(user.updatedAt)
-  });
+  try {
+    await setDoc(doc(db, 'users', user.uid), {
+      ...user,
+      createdAt: Timestamp.fromDate(user.createdAt),
+      updatedAt: Timestamp.fromDate(user.updatedAt)
+    });
+    console.log('User created in Firestore successfully');
+  } catch (error: any) {
+    console.error('Error creating user in Firestore:', error);
+    // If Firestore is unavailable, just continue with local user object
+    if (error.code === 'unavailable') {
+      console.warn('Firestore unavailable, using local user data only');
+    } else {
+      throw error;
+    }
+  }
   
   return user;
 }
 
 export async function getUser(uid: string): Promise<User | null> {
   const { db } = initializeFirebase();
-  const docSnap = await getDoc(doc(db, 'users', uid));
-  
-  if (!docSnap.exists()) return null;
-  
-  const data = docSnap.data();
-  return {
-    ...data,
-    createdAt: data.createdAt.toDate(),
-    updatedAt: data.updatedAt.toDate()
-  } as User;
+  try {
+    const docSnap = await getDoc(doc(db, 'users', uid));
+    
+    if (!docSnap.exists()) {
+      console.log('User document does not exist in Firestore');
+      return null;
+    }
+    
+    const data = docSnap.data();
+    return {
+      ...data,
+      createdAt: data.createdAt.toDate(),
+      updatedAt: data.updatedAt.toDate()
+    } as User;
+  } catch (error: any) {
+    console.error('Error getting user from Firestore:', error);
+    // If Firestore is not available, return null so we can create the user
+    if (error.code === 'unavailable') {
+      console.warn('Firestore unavailable, will create user locally');
+      return null;
+    }
+    throw error;
+  }
 }
 
 // Resume CRUD
@@ -125,13 +200,17 @@ export async function uploadResume(
   name: string,
   parsedProfile: Resume['parsedProfile']
 ): Promise<Resume> {
-  const { db, storage } = initializeFirebase();
+  const { db } = initializeFirebase();
   
   const resumeId = `${userId}_${Date.now()}`;
-  const storageRef = ref(storage, `resumes/${userId}/${resumeId}.pdf`);
   
-  await uploadBytes(storageRef, file);
-  const pdfUrl = await getDownloadURL(storageRef);
+  // Convert PDF to base64 and store in Firestore instead of Storage (avoids CORS issues)
+  const arrayBuffer = await file.arrayBuffer();
+  const base64 = btoa(
+    new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+  );
+  
+  const pdfUrl = `data:application/pdf;base64,${base64}`;
   
   const resume: Resume = {
     id: resumeId,
@@ -150,6 +229,7 @@ export async function uploadResume(
     updatedAt: Timestamp.fromDate(resume.updatedAt)
   });
   
+  console.log('Resume saved to Firestore with base64 PDF');
   return resume;
 }
 
@@ -177,14 +257,10 @@ export async function updateResumeName(resumeId: string, name: string): Promise<
 }
 
 export async function deleteResume(resumeId: string, userId: string): Promise<void> {
-  const { db, storage } = initializeFirebase();
+  const { db } = initializeFirebase();
   
-  // Delete from Firestore
+  // Delete from Firestore (PDF is stored as base64 in the document)
   await deleteDoc(doc(db, 'resumes', resumeId));
-  
-  // Delete from Storage
-  const storageRef = ref(storage, `resumes/${userId}/${resumeId}.pdf`);
-  await deleteObject(storageRef);
 }
 
 export { auth, db, storage };

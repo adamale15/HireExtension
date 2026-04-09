@@ -1,10 +1,35 @@
+import { useState } from 'react';
+
 interface AuthScreenProps {
   onSignIn: () => Promise<void>;
+  onEmailSignIn?: (email: string, password: string) => Promise<void>;
+  onEmailSignUp?: (email: string, password: string) => Promise<void>;
   loading: boolean;
   error: string | null;
 }
 
-export function AuthScreen({ onSignIn, loading, error }: AuthScreenProps) {
+export function AuthScreen({ onSignIn, onEmailSignIn, onEmailSignUp, loading, error }: AuthScreenProps) {
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+
+    setEmailLoading(true);
+    try {
+      if (authMode === 'signup' && onEmailSignUp) {
+        await onEmailSignUp(email, password);
+      } else if (authMode === 'signin' && onEmailSignIn) {
+        await onEmailSignIn(email, password);
+      }
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
@@ -14,10 +39,56 @@ export function AuthScreen({ onSignIn, loading, error }: AuthScreenProps) {
         </div>
 
         <div className="space-y-4">
+          {/* Email/Password Form - Primary authentication method */}
+          <form onSubmit={handleEmailAuth} className="space-y-3">
+            <input
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password (min 6 characters)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+              minLength={6}
+            />
+            <button
+              type="submit"
+              disabled={emailLoading || !email || !password}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              {emailLoading ? 'Please wait...' : (authMode === 'signup' ? 'Create Account' : 'Sign In')}
+            </button>
+          </form>
+
+          <button
+            onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
+            className="w-full text-sm text-blue-600 hover:text-blue-700"
+          >
+            {authMode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+          </button>
+
+          {/* Divider - Hidden for now since Google auth has issues
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+
           <button
             onClick={onSignIn}
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-300 rounded-lg px-6 py-3 text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Google Sign-In currently has compatibility issues in Chrome extensions"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
@@ -43,10 +114,17 @@ export function AuthScreen({ onSignIn, loading, error }: AuthScreenProps) {
             )}
             {loading ? 'Signing in...' : 'Sign in with Google'}
           </button>
+          */}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
-              {error}
+              <p className="font-medium mb-1">Authentication Failed</p>
+              <p>{error}</p>
+              {error.includes('internal-error') && (
+                <p className="mt-2 text-xs">
+                  Try using email/password authentication instead of Google Sign-In.
+                </p>
+              )}
             </div>
           )}
 

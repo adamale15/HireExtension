@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useResumes } from '../../hooks/useResumes';
 import { AuthScreen } from '../../components/AuthScreen';
+import { ResumeUploader } from '../../components/ResumeUploader';
+import { ResumeList } from '../../components/ResumeList';
+import { parseResumePDF, isGeminiInitialized } from '../../lib/gemini';
 
 type Tab = 'jobs' | 'resumes' | 'settings';
 
 function App() {
-  const { user, loading, error, signIn, signOut, isAuthenticated } = useAuth();
+  const { user, loading, error, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('jobs');
 
   if (loading) {
@@ -20,7 +24,15 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthScreen onSignIn={signIn} loading={loading} error={error} />;
+    return (
+      <AuthScreen 
+        onSignIn={signInWithGoogle}
+        onEmailSignIn={signInWithEmail}
+        onEmailSignUp={signUpWithEmail}
+        loading={loading} 
+        error={error} 
+      />
+    );
   }
 
   return (
@@ -31,11 +43,18 @@ function App() {
           <h1 className="text-lg font-bold text-gray-900">HireExtension</h1>
         </div>
         <div className="flex items-center gap-3">
-          <img
-            src={user?.photoURL || ''}
-            alt={user?.displayName || ''}
-            className="w-8 h-8 rounded-full"
-          />
+          {user?.photoURL ? (
+            <img
+              src={user.photoURL}
+              alt={user.displayName || user.email}
+              className="w-8 h-8 rounded-full"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </div>
+          )}
+          <span className="text-sm text-gray-700">{user?.email}</span>
           <button
             onClick={signOut}
             className="text-sm text-gray-600 hover:text-gray-900"
@@ -110,29 +129,93 @@ function JobsTab() {
 }
 
 function ResumesTab({ userId }: { userId?: string }) {
+  const {
+    resumes,
+    defaultResumeId,
+    loading,
+    error,
+    uploadResume,
+    updateResumeName,
+    deleteResume,
+    setDefaultResume,
+  } = useResumes(userId);
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleUpload = async (file: File, name: string) => {
+    if (!isGeminiInitialized()) {
+      setUploadError('Gemini API not configured. Please check your API key.');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadError(null);
+
+      console.log('Parsing resume with Gemini AI...');
+      const parsedProfile = await parseResumePDF(file);
+      console.log('Resume parsed successfully:', parsedProfile);
+
+      console.log('Uploading to Firebase Storage...');
+      await uploadResume(file, name, parsedProfile);
+      console.log('Resume uploaded successfully');
+    } catch (err: any) {
+      console.error('Error uploading resume:', err);
+      setUploadError(err.message || 'Failed to upload resume');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <div className="p-6 text-center">
-      <div className="max-w-md mx-auto">
-        <div className="text-6xl mb-4">📄</div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload Your Resume</h2>
-        <p className="text-gray-600 mb-6">
-          Get started by uploading your first resume. We'll use AI to parse it and match you with jobs.
-        </p>
-        <button
-          disabled
-          className="bg-gray-300 text-gray-600 px-6 py-2 rounded-lg cursor-not-allowed"
-        >
-          Upload Resume (Coming in Phase 2)
-        </button>
-        <div className="mt-8 text-sm text-gray-500">
-          <p>Resume features will be implemented in Phase 2:</p>
-          <ul className="mt-2 space-y-1 text-left">
-            <li>• Upload PDF resumes</li>
-            <li>• AI parsing with Gemini</li>
-            <li>• Multi-resume management</li>
-            <li>• Set default resume</li>
-          </ul>
+    <div className="p-6">
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* Header */}
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Resume Management</h2>
+          <p className="text-gray-600">
+            Upload and manage your resumes. AI will parse them automatically.
+          </p>
         </div>
+
+        {/* Upload Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New Resume</h3>
+          <ResumeUploader onUpload={handleUpload} loading={uploading} />
+          
+          {uploadError && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+              {uploadError}
+            </div>
+          )}
+        </div>
+
+        {/* Resume List */}
+        {resumes.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <ResumeList
+              resumes={resumes}
+              defaultResumeId={defaultResumeId}
+              onSetDefault={setDefaultResume}
+              onRename={updateResumeName}
+              onDelete={deleteResume}
+              loading={loading}
+            />
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {!loading && resumes.length === 0 && !uploading && (
+          <div className="text-center py-8 text-gray-500">
+            <p>No resumes uploaded yet. Upload your first resume to get started!</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -146,13 +229,19 @@ function SettingsTab({ user }: { user: any }) {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Account</h2>
           <div className="flex items-center gap-4 mb-4">
-            <img
-              src={user?.photoURL || ''}
-              alt={user?.displayName || ''}
-              className="w-16 h-16 rounded-full"
-            />
+            {user?.photoURL ? (
+              <img
+                src={user.photoURL}
+                alt={user.displayName || user.email}
+                className="w-16 h-16 rounded-full"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-medium">
+                {user?.email?.charAt(0).toUpperCase() || 'U'}
+              </div>
+            )}
             <div>
-              <p className="font-medium text-gray-900">{user?.displayName}</p>
+              <p className="font-medium text-gray-900">{user?.displayName || 'User'}</p>
               <p className="text-sm text-gray-600">{user?.email}</p>
             </div>
           </div>
