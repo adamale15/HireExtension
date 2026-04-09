@@ -71,6 +71,23 @@ export interface ScrapedJob {
   matchScore?: number; // Jobright's match score (0-100)
   rankDesc?: string; // "Strong Match", "Good Match", etc.
   jobSummary?: string; // Job description summary
+  // AI Matching Results (Phase 4)
+  aiMatch?: JobMatch;
+}
+
+export interface JobMatch {
+  score: number; // 0-100
+  category: 'safe' | 'moderate' | 'dont-apply';
+  recommendedResumeId: string | null;
+  matchingSkills: string[];
+  missingSkills: string[];
+  experienceMatch: {
+    required: string;
+    yourLevel: string;
+    isMatch: boolean;
+  };
+  insights: string[];
+  analyzedAt: Date;
 }
 
 export interface JobMatch {

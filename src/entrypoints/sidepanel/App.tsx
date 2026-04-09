@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useResumes } from '../../hooks/useResumes';
 import { useJobs } from '../../hooks/useJobs';
+import { useJobMatching } from '../../hooks/useJobMatching';
 import { AuthScreen } from '../../components/AuthScreen';
 import { ResumeUploader } from '../../components/ResumeUploader';
 import { ResumeList } from '../../components/ResumeList';
 import { JobList } from '../../components/JobList';
 import { parseResumePDF, isGeminiInitialized } from '../../lib/gemini';
+import { STORAGE_KEYS } from '../../lib/types';
 import type { ScrapedJob } from '../../lib/types';
 
 type Tab = 'jobs' | 'resumes' | 'settings';
@@ -103,11 +105,52 @@ function App() {
 
 function JobsTab() {
   const { jobs, loading, error, refreshJobs, clearJobs } = useJobs();
+  const { user } = useAuth();
+  const { resumes } = useResumes(user?.uid);
+  const { analyzing, progress, error: matchError, analyzeJobs } = useJobMatching();
+  const [analyzedJobs, setAnalyzedJobs] = useState<ScrapedJob[]>([]);
+
+  // Update analyzed jobs when jobs change
+  useEffect(() => {
+    setAnalyzedJobs(jobs);
+  }, [jobs]);
+
+  const handleAnalyzeJobs = async () => {
+    if (resumes.length === 0) {
+      alert('Please upload at least one resume in the Resumes tab first!');
+      return;
+    }
+
+    const results = await analyzeJobs(jobs, resumes);
+    setAnalyzedJobs(results);
+    
+    // Store analyzed jobs back to storage
+    await browser.storage.local.set({
+      [STORAGE_KEYS.SCRAPED_JOBS]: results
+    });
+  };
 
   const handleJobClick = (job: ScrapedJob) => {
-    // Open job in new tab
-    window.open(job.url, '_blank');
+    // Open direct apply link or Jobright page
+    window.open(job.applyUrl || job.url, '_blank');
   };
+
+  // Helper to get resume name by ID
+  const getResumeName = (resumeId: string | null) => {
+    if (!resumeId) return null;
+    const resume = resumes.find(r => r.id === resumeId);
+    return resume?.name || 'Unknown Resume';
+  };
+
+  // Count jobs by category
+  const categoryCount = {
+    safe: analyzedJobs.filter(j => j.aiMatch?.category === 'safe').length,
+    moderate: analyzedJobs.filter(j => j.aiMatch?.category === 'moderate').length,
+    dontApply: analyzedJobs.filter(j => j.aiMatch?.category === 'dont-apply').length,
+    unanalyzed: analyzedJobs.filter(j => !j.aiMatch).length,
+  };
+
+  const hasAnalyzedJobs = analyzedJobs.some(j => j.aiMatch);
 
   return (
     <div className="p-6">
@@ -124,6 +167,19 @@ function JobsTab() {
           </div>
           
           <div className="flex gap-2">
+            {jobs.length > 0 && !hasAnalyzedJobs && (
+              <button
+                onClick={handleAnalyzeJobs}
+                disabled={analyzing || loading}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                {analyzing ? `Analyzing ${progress.current}/${progress.total}...` : 'Analyze with AI'}
+              </button>
+            )}
+            
             <button
               onClick={refreshJobs}
               disabled={loading}
@@ -146,24 +202,72 @@ function JobsTab() {
           </div>
         </div>
 
-        {error && (
+        {/* Analysis Progress */}
+        {analyzing && (
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              <span className="text-sm font-medium text-blue-900">
+                Analyzing jobs with AI... ({progress.current}/{progress.total})
+              </span>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(progress.current / progress.total) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-blue-700 mt-2">
+              This may take a few minutes. We're using AI to analyze each job against your resume(s).
+            </p>
+          </div>
+        )}
+
+        {/* Category Stats */}
+        {hasAnalyzedJobs && (
+          <div className="mb-6 grid grid-cols-4 gap-3">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="text-2xl font-bold text-green-800">{categoryCount.safe}</div>
+              <div className="text-xs text-green-600">Safe Apply</div>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <div className="text-2xl font-bold text-yellow-800">{categoryCount.moderate}</div>
+              <div className="text-xs text-yellow-600">Moderate</div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="text-2xl font-bold text-red-800">{categoryCount.dontApply}</div>
+              <div className="text-xs text-red-600">Don't Apply</div>
+            </div>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <div className="text-2xl font-bold text-gray-800">{categoryCount.unanalyzed}</div>
+              <div className="text-xs text-gray-600">Unanalyzed</div>
+            </div>
+          </div>
+        )}
+
+        {(error || matchError) && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-red-700">{error}</p>
+            <p className="text-sm text-red-700">{error || matchError}</p>
           </div>
         )}
 
         {/* Job List */}
-        <JobList jobs={jobs} onJobClick={handleJobClick} loading={loading} />
+        <JobList 
+          jobs={analyzedJobs} 
+          onJobClick={handleJobClick} 
+          loading={loading}
+          getResumeName={getResumeName}
+        />
         
-        {/* Phase 4-5 Notice */}
-        {jobs.length > 0 && (
+        {/* Phase 4 Complete Notice */}
+        {hasAnalyzedJobs && (
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-            <p className="font-medium mb-1">Coming in Phase 4-5:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>AI-powered job matching with your resumes</li>
-              <li>Smart categorization (Safe Apply / Moderate / Don't Apply)</li>
-              <li>Resume recommendations for each job</li>
-              <li>Match score and detailed analysis</li>
+            <p className="font-medium mb-1">✅ AI Job Matching Active!</p>
+            <p>Jobs are now categorized based on AI analysis. Coming next:</p>
+            <ul className="list-disc list-inside space-y-1 mt-2">
+              <li>Category filter tabs (Safe / Moderate / Don't Apply)</li>
+              <li>Detailed match insights for each job</li>
+              <li>Resume tailoring recommendations</li>
             </ul>
           </div>
         )}

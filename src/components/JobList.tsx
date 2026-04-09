@@ -5,9 +5,10 @@ interface JobListProps {
   jobs: ScrapedJob[];
   onJobClick?: (job: ScrapedJob) => void;
   loading?: boolean;
+  getResumeName?: (resumeId: string | null) => string | null;
 }
 
-export function JobList({ jobs, onJobClick, loading }: JobListProps) {
+export function JobList({ jobs, onJobClick, loading, getResumeName }: JobListProps) {
   const [filter, setFilter] = useState<'all' | 'remote' | 'onsite' | 'hybrid'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -101,7 +102,12 @@ export function JobList({ jobs, onJobClick, loading }: JobListProps) {
       {/* Job Cards */}
       <div className="space-y-3">
         {filteredJobs.map((job) => (
-          <JobCard key={job.id} job={job} onClick={() => onJobClick?.(job)} />
+          <JobCard 
+            key={job.id} 
+            job={job} 
+            onClick={() => onJobClick?.(job)}
+            getResumeName={getResumeName}
+          />
         ))}
       </div>
     </div>
@@ -111,14 +117,48 @@ export function JobList({ jobs, onJobClick, loading }: JobListProps) {
 interface JobCardProps {
   job: ScrapedJob;
   onClick?: () => void;
+  getResumeName?: (resumeId: string | null) => string | null;
 }
 
-function JobCard({ job, onClick }: JobCardProps) {
+function JobCard({ job, onClick, getResumeName }: JobCardProps) {
+  const hasAIMatch = !!job.aiMatch;
+  
+  // Category colors
+  const categoryStyles = {
+    safe: 'bg-green-100 text-green-800 border-green-300',
+    moderate: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+    'dont-apply': 'bg-red-100 text-red-800 border-red-300',
+  };
+
   return (
     <div
       onClick={onClick}
-      className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+      className={`bg-white border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer ${
+        hasAIMatch ? categoryStyles[job.aiMatch!.category] : 'border-gray-200'
+      }`}
     >
+      {/* AI Match Badge */}
+      {hasAIMatch && (
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 text-xs font-bold rounded-full ${categoryStyles[job.aiMatch!.category]}`}>
+              {job.aiMatch!.category === 'safe' && '🟢 SAFE APPLY'}
+              {job.aiMatch!.category === 'moderate' && '🟡 MODERATE'}
+              {job.aiMatch!.category === 'dont-apply' && '🔴 DON\'T APPLY'}
+            </span>
+            <span className="text-sm font-bold text-gray-900">
+              {job.aiMatch!.score}% Match
+            </span>
+          </div>
+          
+          {job.aiMatch!.recommendedResumeId && getResumeName && (
+            <span className="text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded font-medium">
+              📄 {getResumeName(job.aiMatch!.recommendedResumeId)}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">{job.title}</h3>
@@ -165,6 +205,30 @@ function JobCard({ job, onClick }: JobCardProps) {
           {job.postedAt}
         </div>
       </div>
+
+      {/* AI Insights Preview */}
+      {hasAIMatch && job.aiMatch!.insights.length > 0 && (
+        <div className="mb-3 p-2 bg-gray-50 rounded text-xs text-gray-700">
+          <p className="font-medium mb-1">💡 AI Insight:</p>
+          <p>{job.aiMatch!.insights[0]}</p>
+        </div>
+      )}
+
+      {/* Skills Preview */}
+      {hasAIMatch && job.aiMatch!.matchingSkills.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {job.aiMatch!.matchingSkills.slice(0, 5).map((skill, idx) => (
+            <span key={idx} className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs">
+              ✓ {skill}
+            </span>
+          ))}
+          {job.aiMatch!.matchingSkills.length > 5 && (
+            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+              +{job.aiMatch!.matchingSkills.length - 5} more
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {job.h1bSponsorship === true && (
