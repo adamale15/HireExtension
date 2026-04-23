@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 
 interface AuthScreenProps {
   onSignIn: () => Promise<void>;
@@ -8,13 +8,19 @@ interface AuthScreenProps {
   error: string | null;
 }
 
-export function AuthScreen({ onSignIn, onEmailSignIn, onEmailSignUp, loading, error }: AuthScreenProps) {
+export function AuthScreen({
+  onSignIn: _onSignIn,
+  onEmailSignIn,
+  onEmailSignUp,
+  loading: _loading,
+  error,
+}: AuthScreenProps) {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
 

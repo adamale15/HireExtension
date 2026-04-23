@@ -1,28 +1,37 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { useResumes } from '../../hooks/useResumes';
-import { useJobs } from '../../hooks/useJobs';
-import { useJobMatching } from '../../hooks/useJobMatching';
+import { useEffect, useState } from 'react';
 import { AuthScreen } from '../../components/AuthScreen';
-import { ResumeUploader } from '../../components/ResumeUploader';
-import { ResumeList } from '../../components/ResumeList';
 import { JobList } from '../../components/JobList';
-import { parseResumePDF, isGeminiInitialized } from '../../lib/gemini';
+import { ResumeList } from '../../components/ResumeList';
+import { ResumeUploader } from '../../components/ResumeUploader';
+import { useAuth } from '../../hooks/useAuth';
+import { useJobMatching } from '../../hooks/useJobMatching';
+import { useJobs } from '../../hooks/useJobs';
+import { useResumes } from '../../hooks/useResumes';
+import { isGeminiInitialized, parseResumePDF } from '../../lib/gemini';
 import { STORAGE_KEYS } from '../../lib/types';
-import type { ScrapedJob } from '../../lib/types';
+import type { ScrapedJob, User } from '../../lib/types';
 
 type Tab = 'jobs' | 'resumes' | 'settings';
 
 function App() {
-  const { user, loading, error, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut, isAuthenticated } = useAuth();
+  const {
+    user,
+    loading,
+    error,
+    signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    signOut,
+    isAuthenticated,
+  } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('jobs');
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+          <p className="text-gray-600">Loading HireExtension...</p>
         </div>
       </div>
     );
@@ -30,70 +39,68 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <AuthScreen 
+      <AuthScreen
         onSignIn={signInWithGoogle}
         onEmailSignIn={signInWithEmail}
         onEmailSignUp={signUpWithEmail}
-        loading={loading} 
-        error={error} 
+        loading={loading}
+        error={error}
       />
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className="flex h-screen flex-col bg-gray-50">
+      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+        <div>
           <h1 className="text-lg font-bold text-gray-900">HireExtension</h1>
+          <p className="text-xs text-gray-500">AI resume matching for Jobright recommended jobs</p>
         </div>
+
         <div className="flex items-center gap-3">
           {user?.photoURL ? (
             <img
               src={user.photoURL}
               alt={user.displayName || user.email}
-              className="w-8 h-8 rounded-full"
+              className="h-8 w-8 rounded-full"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-medium text-white">
               {user?.email?.charAt(0).toUpperCase() || 'U'}
             </div>
           )}
-          <span className="text-sm text-gray-700">{user?.email}</span>
-          <button
-            onClick={signOut}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
+          <div className="hidden text-right sm:block">
+            <p className="text-sm font-medium text-gray-900">{user?.displayName || 'User'}</p>
+            <p className="text-xs text-gray-500">{user?.email}</p>
+          </div>
+          <button onClick={signOut} className="text-sm text-gray-600 hover:text-gray-900">
             Sign out
           </button>
         </div>
       </header>
 
-      {/* Tab Navigation */}
-      <nav className="bg-white border-b border-gray-200 px-4">
+      <nav className="border-b border-gray-200 bg-white px-4">
         <div className="flex gap-1">
           {[
-            { id: 'jobs' as Tab, label: 'Jobs', icon: '💼' },
-            { id: 'resumes' as Tab, label: 'Resumes', icon: '📄' },
-            { id: 'settings' as Tab, label: 'Settings', icon: '⚙️' }
-          ].map(tab => (
+            { id: 'jobs' as Tab, label: 'Jobs', icon: 'Jobs' },
+            { id: 'resumes' as Tab, label: 'Resumes', icon: 'Resumes' },
+            { id: 'settings' as Tab, label: 'Settings', icon: 'Settings' },
+          ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.id
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
             >
-              <span className="mr-2">{tab.icon}</span>
-              {tab.label}
+              {tab.icon}
             </button>
           ))}
         </div>
       </nav>
 
-      {/* Tab Content */}
       <main className="flex-1 overflow-auto">
         {activeTab === 'jobs' && <JobsTab />}
         {activeTab === 'resumes' && <ResumesTab userId={user?.uid} />}
@@ -106,169 +113,173 @@ function App() {
 function JobsTab() {
   const { jobs, loading, error, refreshJobs, clearJobs } = useJobs();
   const { user } = useAuth();
-  const { resumes } = useResumes(user?.uid);
-  const { analyzing, progress, error: matchError, analyzeJobs } = useJobMatching();
+  const { resumes, defaultResumeId } = useResumes(user?.uid);
+  const { analyzing, activeJobId, progress, error: matchError, analyzeJob, analyzeJobs } =
+    useJobMatching();
   const [analyzedJobs, setAnalyzedJobs] = useState<ScrapedJob[]>([]);
 
-  // Update analyzed jobs when jobs change
   useEffect(() => {
     setAnalyzedJobs(jobs);
   }, [jobs]);
 
-  const handleAnalyzeJobs = async () => {
-    if (resumes.length === 0) {
-      alert('Please upload at least one resume in the Resumes tab first!');
-      return;
-    }
-
-    const results = await analyzeJobs(jobs, resumes);
-    setAnalyzedJobs(results);
-    
-    // Store analyzed jobs back to storage
+  const persistJobs = async (nextJobs: ScrapedJob[]) => {
+    setAnalyzedJobs(nextJobs);
     await browser.storage.local.set({
-      [STORAGE_KEYS.SCRAPED_JOBS]: results
+      [STORAGE_KEYS.SCRAPED_JOBS]: nextJobs,
     });
   };
 
+  const handleAnalyzeJobs = async () => {
+    if (resumes.length === 0) {
+      alert('Please upload at least one resume in the Resumes tab first.');
+      return;
+    }
+
+    const results = await analyzeJobs(analyzedJobs, resumes);
+    await persistJobs(results);
+  };
+
+  const handleAnalyzeSingleJob = async (job: ScrapedJob, resumeId?: string) => {
+    const updatedJob = await analyzeJob(job, resumes, resumeId);
+    const nextJobs = analyzedJobs.map((currentJob) =>
+      currentJob.id === updatedJob.id ? updatedJob : currentJob,
+    );
+    await persistJobs(nextJobs);
+  };
+
   const handleJobClick = (job: ScrapedJob) => {
-    // Open direct apply link or Jobright page
     window.open(job.applyUrl || job.url, '_blank');
   };
 
-  // Helper to get resume name by ID
   const getResumeName = (resumeId: string | null) => {
-    if (!resumeId) return null;
-    const resume = resumes.find(r => r.id === resumeId);
-    return resume?.name || 'Unknown Resume';
+    if (!resumeId) {
+      return null;
+    }
+
+    return resumes.find((resume) => resume.id === resumeId)?.name || 'Unknown resume';
   };
 
-  // Count jobs by category
   const categoryCount = {
-    safe: analyzedJobs.filter(j => j.aiMatch?.category === 'safe').length,
-    moderate: analyzedJobs.filter(j => j.aiMatch?.category === 'moderate').length,
-    dontApply: analyzedJobs.filter(j => j.aiMatch?.category === 'dont-apply').length,
-    unanalyzed: analyzedJobs.filter(j => !j.aiMatch).length,
+    safe: analyzedJobs.filter((job) => job.aiMatch?.category === 'safe').length,
+    moderate: analyzedJobs.filter((job) => job.aiMatch?.category === 'moderate').length,
+    dontApply: analyzedJobs.filter((job) => job.aiMatch?.category === 'dont-apply').length,
+    unanalyzed: analyzedJobs.filter((job) => !job.aiMatch).length,
   };
 
-  const hasAnalyzedJobs = analyzedJobs.some(j => j.aiMatch);
+  const hasAnalyzedJobs = analyzedJobs.some((job) => job.aiMatch);
+  const hasUnanalyzedJobs = analyzedJobs.some((job) => !job.aiMatch);
 
   return (
     <div className="p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Scanned Jobs</h2>
-            <p className="text-gray-600 mt-1">
+            <h2 className="text-2xl font-bold text-gray-900">Scanned jobs</h2>
+            <p className="mt-1 text-gray-600">
               {jobs.length > 0
-                ? `${jobs.length} jobs found from Jobright`
-                : 'No jobs scanned yet'}
+                ? `${jobs.length} jobs synced from Jobright recommended jobs`
+                : 'Open Jobright recommended jobs to begin scraping.'}
             </p>
           </div>
-          
-          <div className="flex gap-2">
-            {jobs.length > 0 && !hasAnalyzedJobs && (
+
+          <div className="flex flex-wrap gap-2">
+            {jobs.length > 0 && (
               <button
                 onClick={handleAnalyzeJobs}
                 disabled={analyzing || loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
                 </svg>
-                {analyzing ? `Analyzing ${progress.current}/${progress.total}...` : 'Analyze with AI'}
+                {analyzing && !activeJobId
+                  ? `Analyzing ${progress.current}/${progress.total}`
+                  : hasUnanalyzedJobs
+                    ? 'Analyze remaining jobs'
+                    : 'Re-check all analyzed jobs'}
               </button>
             )}
-            
+
             <button
               onClick={refreshJobs}
               disabled={loading}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <svg className="w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
               Refresh
             </button>
-            
+
             {jobs.length > 0 && (
               <button
                 onClick={clearJobs}
-                className="px-4 py-2 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50"
+                className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
               >
-                Clear All
+                Clear all
               </button>
             )}
           </div>
         </div>
 
-        {/* Analysis Progress */}
-        {analyzing && (
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+        {analyzing && !activeJobId && (
+          <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="mb-2 flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-blue-600"></div>
               <span className="text-sm font-medium text-blue-900">
-                Analyzing jobs with AI... ({progress.current}/{progress.total})
+                Analyzing jobs with AI ({progress.current}/{progress.total})
               </span>
             </div>
-            <div className="w-full bg-blue-200 rounded-full h-2">
+            <div className="h-2 w-full rounded-full bg-blue-200">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                className="h-2 rounded-full bg-blue-600 transition-all duration-300"
+                style={{
+                  width:
+                    progress.total > 0 ? `${(progress.current / progress.total) * 100}%` : '0%',
+                }}
               />
             </div>
-            <p className="text-xs text-blue-700 mt-2">
-              This may take a few minutes. We're using AI to analyze each job against your resume(s).
+            <p className="mt-2 text-xs text-blue-700">
+              Each listing is being compared against your saved resumes. Results will persist in the side panel when finished.
             </p>
           </div>
         )}
 
-        {/* Category Stats */}
         {hasAnalyzedJobs && (
-          <div className="mb-6 grid grid-cols-4 gap-3">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <div className="text-2xl font-bold text-green-800">{categoryCount.safe}</div>
-              <div className="text-xs text-green-600">Safe Apply</div>
-            </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <div className="text-2xl font-bold text-yellow-800">{categoryCount.moderate}</div>
-              <div className="text-xs text-yellow-600">Moderate</div>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <div className="text-2xl font-bold text-red-800">{categoryCount.dontApply}</div>
-              <div className="text-xs text-red-600">Don't Apply</div>
-            </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <div className="text-2xl font-bold text-gray-800">{categoryCount.unanalyzed}</div>
-              <div className="text-xs text-gray-600">Unanalyzed</div>
-            </div>
+          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <SummaryCard label="Safe Apply" value={categoryCount.safe} tone="green" />
+            <SummaryCard label="Moderate" value={categoryCount.moderate} tone="amber" />
+            <SummaryCard label="Don't Apply" value={categoryCount.dontApply} tone="red" />
+            <SummaryCard label="Unanalyzed" value={categoryCount.unanalyzed} tone="slate" />
           </div>
         )}
 
         {(error || matchError) && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
             <p className="text-sm text-red-700">{error || matchError}</p>
           </div>
         )}
 
-        {/* Job List */}
-        <JobList 
-          jobs={analyzedJobs} 
-          onJobClick={handleJobClick} 
+        <JobList
+          jobs={analyzedJobs}
+          resumes={resumes}
+          defaultResumeId={defaultResumeId}
+          onJobClick={handleJobClick}
+          onAnalyzeJob={handleAnalyzeSingleJob}
           loading={loading}
+          analyzing={analyzing}
+          activeJobId={activeJobId}
           getResumeName={getResumeName}
         />
-        
-        {/* Phase 4 Complete Notice */}
+
         {hasAnalyzedJobs && (
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
-            <p className="font-medium mb-1">✅ AI Job Matching Active!</p>
-            <p>Jobs are now categorized based on AI analysis. Coming next:</p>
-            <ul className="list-disc list-inside space-y-1 mt-2">
-              <li>Category filter tabs (Safe / Moderate / Don't Apply)</li>
-              <li>Detailed match insights for each job</li>
-              <li>Resume tailoring recommendations</li>
-            </ul>
+          <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            <p className="font-medium text-slate-900">Phase 5 jobs workspace is active.</p>
+            <p className="mt-1">
+              Use the category tabs, sort by match score, inspect full AI reasoning, and rerun a single job against a specific resume without reprocessing the whole list.
+            </p>
           </div>
         )}
       </div>
@@ -287,13 +298,12 @@ function ResumesTab({ userId }: { userId?: string }) {
     deleteResume,
     setDefaultResume,
   } = useResumes(userId);
-
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleUpload = async (file: File, name: string) => {
     if (!isGeminiInitialized()) {
-      setUploadError('Gemini API not configured. Please check your API key.');
+      setUploadError('Gemini API is not configured. Add it in .env.local before uploading.');
       return;
     }
 
@@ -301,13 +311,8 @@ function ResumesTab({ userId }: { userId?: string }) {
       setUploading(true);
       setUploadError(null);
 
-      console.log('Parsing resume with Gemini AI...');
       const parsedProfile = await parseResumePDF(file);
-      console.log('Resume parsed successfully:', parsedProfile);
-
-      console.log('Uploading to Firebase Storage...');
       await uploadResume(file, name, parsedProfile);
-      console.log('Resume uploaded successfully');
     } catch (err: any) {
       console.error('Error uploading resume:', err);
       setUploadError(err.message || 'Failed to upload resume');
@@ -318,30 +323,27 @@ function ResumesTab({ userId }: { userId?: string }) {
 
   return (
     <div className="p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        {/* Header */}
+      <div className="mx-auto max-w-3xl space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Resume Management</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Resume management</h2>
           <p className="text-gray-600">
-            Upload and manage your resumes. AI will parse them automatically.
+            Upload, rename, delete, and choose the default resume used for matching.
           </p>
         </div>
 
-        {/* Upload Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New Resume</h3>
+        <div className="rounded-lg bg-white p-6 shadow">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">Upload a new resume</h3>
           <ResumeUploader onUpload={handleUpload} loading={uploading} />
-          
+
           {uploadError && (
-            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {uploadError}
             </div>
           )}
         </div>
 
-        {/* Resume List */}
         {resumes.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="rounded-lg bg-white p-6 shadow">
             <ResumeList
               resumes={resumes}
               defaultResumeId={defaultResumeId}
@@ -354,14 +356,14 @@ function ResumesTab({ userId }: { userId?: string }) {
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
         {!loading && resumes.length === 0 && !uploading && (
-          <div className="text-center py-8 text-gray-500">
-            <p>No resumes uploaded yet. Upload your first resume to get started!</p>
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-gray-500">
+            <p>No resumes uploaded yet. Add your first PDF to unlock AI matching.</p>
           </div>
         )}
       </div>
@@ -369,22 +371,21 @@ function ResumesTab({ userId }: { userId?: string }) {
   );
 }
 
-function SettingsTab({ user }: { user: any }) {
+function SettingsTab({ user }: { user: User | null }) {
   return (
     <div className="p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Account Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Account</h2>
-          <div className="flex items-center gap-4 mb-4">
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div className="rounded-lg bg-white p-6 shadow">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">Account</h2>
+          <div className="flex items-center gap-4">
             {user?.photoURL ? (
               <img
                 src={user.photoURL}
                 alt={user.displayName || user.email}
-                className="w-16 h-16 rounded-full"
+                className="h-16 w-16 rounded-full"
               />
             ) : (
-              <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-medium">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-2xl font-medium text-white">
                 {user?.email?.charAt(0).toUpperCase() || 'U'}
               </div>
             )}
@@ -395,52 +396,48 @@ function SettingsTab({ user }: { user: any }) {
           </div>
         </div>
 
-        {/* API Key Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Gemini API Key</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Enter your Google Gemini API key to enable AI features. Get one from{' '}
-            <a
-              href="https://aistudio.google.com/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              Google AI Studio
-            </a>
-            .
+        <div className="rounded-lg bg-white p-6 shadow">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">AI configuration</h2>
+          <p className="mb-3 text-sm text-gray-600">
+            Resume parsing currently reads the Gemini key from <code>.env.local</code>. Job matching uses the configured Groq key for analysis.
           </p>
-          <input
-            type="password"
-            placeholder="AIza..."
-            disabled
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-          />
-          <button
-            disabled
-            className="mt-2 bg-gray-300 text-gray-600 px-4 py-2 rounded-lg cursor-not-allowed text-sm"
-          >
-            Save (Coming Soon)
-          </button>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            In-panel API key storage is not wired yet, so this screen is informational for now.
+          </div>
         </div>
 
-        {/* About Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">About</h2>
+        <div className="rounded-lg bg-white p-6 shadow">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">Current build</h2>
           <div className="space-y-2 text-sm text-gray-600">
-            <p><strong>Version:</strong> 0.1.0 (Phase 1)</p>
-            <p><strong>Phase 1 Complete:</strong></p>
-            <ul className="ml-4 space-y-1 mt-2">
-              <li>✓ Project setup with WXT + React + TypeScript</li>
-              <li>✓ Firebase integration (Auth, Firestore, Storage)</li>
-              <li>✓ Google Sign-In authentication</li>
-              <li>✓ Session persistence</li>
-              <li>✓ Basic UI structure</li>
-            </ul>
-            <p className="mt-4"><strong>Coming Next:</strong> Phase 2 - Resume Management</p>
+            <p>Auth, resume parsing, Firebase resume storage, Jobright scraping, and AI job matching are all available in this build.</p>
+            <p>The latest jobs phase adds category filters, score sorting, single-job reanalysis, and a detailed match view.</p>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: 'green' | 'amber' | 'red' | 'slate';
+}) {
+  const tones = {
+    green: 'border-green-200 bg-green-50 text-green-800',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    red: 'border-red-200 bg-red-50 text-red-800',
+    slate: 'border-slate-200 bg-slate-50 text-slate-800',
+  } as const;
+
+  return (
+    <div className={`rounded-lg border p-3 ${tones[tone]}`}>
+      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-xs">{label}</div>
     </div>
   );
 }

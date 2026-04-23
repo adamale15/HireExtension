@@ -31,3 +31,6 @@ pnpm-debug.log*
 
 # Build artifacts
 *.zip
+
+# Documentation
+*.md

@@ -6,7 +6,6 @@ import {
   signInWithEmail as firebaseSignInEmail,
   signUpWithEmail as firebaseSignUpEmail,
   signOut as firebaseSignOut,
-  getCurrentUser,
   createUser,
   getUser
 } from '../lib/firebase';

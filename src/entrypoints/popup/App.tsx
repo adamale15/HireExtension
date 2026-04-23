@@ -6,7 +6,7 @@ function App() {
   const [jobCount, setJobCount] = useState(0);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   const loadData = async () => {
@@ -28,44 +28,40 @@ function App() {
 
   return (
     <div className="w-80 bg-white">
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 text-white">
         <h1 className="text-lg font-bold">HireExtension</h1>
-        <p className="text-sm opacity-90">AI Job Matching</p>
+        <p className="text-sm opacity-90">Jobright resume matching workspace</p>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-4">
         {user ? (
           <>
             <div className="flex items-center gap-3">
-              <img
-                src={user.photoURL}
-                alt={user.displayName}
-                className="w-10 h-10 rounded-full"
-              />
+              <img src={user.photoURL} alt={user.displayName} className="h-10 w-10 rounded-full" />
               <div>
-                <p className="font-medium text-gray-900 text-sm">{user.displayName}</p>
+                <p className="text-sm font-medium text-gray-900">{user.displayName}</p>
                 <p className="text-xs text-gray-600">{user.email}</p>
               </div>
             </div>
 
-            <div className="bg-blue-50 rounded-lg p-3">
+            <div className="rounded-lg bg-blue-50 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Jobs Scanned</span>
+                <span className="text-sm text-gray-600">Jobs scanned</span>
                 <span className="text-2xl font-bold text-blue-600">{jobCount}</span>
               </div>
             </div>
 
             <button
               onClick={openSidePanel}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="w-full rounded-lg bg-blue-600 py-2 font-medium text-white transition-colors hover:bg-blue-700"
             >
               Open Side Panel
             </button>
 
-            <div className="text-xs text-gray-500 space-y-1">
-              <p>• Navigate to Jobright to scan jobs</p>
-              <p>• Upload resumes in the side panel</p>
-              <p>• Get AI-powered job matches</p>
+            <div className="space-y-1 text-xs text-gray-500">
+              <p>Open Jobright recommended jobs to scan listings</p>
+              <p>Upload multiple resumes in the side panel</p>
+              <p>Sort, filter, and inspect AI match details</p>
             </div>
           </>
         ) : (
@@ -75,7 +71,7 @@ function App() {
             </p>
             <button
               onClick={openSidePanel}
-              className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="w-full rounded-lg bg-blue-600 py-2 font-medium text-white transition-colors hover:bg-blue-700"
             >
               Sign In
             </button>
@@ -84,7 +80,7 @@ function App() {
       </div>
 
       <div className="border-t border-gray-200 p-3 text-center">
-        <p className="text-xs text-gray-500">Phase 1 Complete ✓</p>
+        <p className="text-xs text-gray-500">Auth, resumes, scraping, and AI matching enabled</p>
       </div>
     </div>
   );

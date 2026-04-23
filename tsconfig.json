@@ -4,6 +4,7 @@
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
+    "baseUrl": ".",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -15,7 +16,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["wxt/client-types"]
+    "paths": {
+      "wxt": [
+        "node_modules/.pnpm/wxt@0.19.29_@types+node@25.5.2_rollup@4.60.1/node_modules/wxt"
+      ],
+      "wxt/*": [
+        "node_modules/.pnpm/wxt@0.19.29_@types+node@25.5.2_rollup@4.60.1/node_modules/wxt/*"
+      ]
+    }
   },
   "include": ["src", ".wxt"]
 }

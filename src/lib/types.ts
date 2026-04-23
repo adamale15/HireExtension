@@ -1,3 +1,6 @@
+export type WorkModel = 'remote' | 'onsite' | 'hybrid';
+export type MatchCategory = 'safe' | 'moderate' | 'dont-apply';
+
 // User related types
 export interface User {
   uid: string;
@@ -49,35 +52,9 @@ export interface Resume {
   updatedAt: Date;
 }
 
-// Job related types
-export interface ScrapedJob {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  workModel: 'remote' | 'onsite' | 'hybrid' | null;
-  salary: {
-    min: number;
-    max: number;
-    currency: string;
-  } | null;
-  url: string; // Jobright URL
-  applyUrl?: string; // Direct company application URL
-  h1bSponsorship: boolean | null;
-  applicantCount: string;
-  postedAt: string;
-  scrapedAt: Date;
-  // Jobright-specific fields from API
-  matchScore?: number; // Jobright's match score (0-100)
-  rankDesc?: string; // "Strong Match", "Good Match", etc.
-  jobSummary?: string; // Job description summary
-  // AI Matching Results (Phase 4)
-  aiMatch?: JobMatch;
-}
-
-export interface JobMatch {
-  score: number; // 0-100
-  category: 'safe' | 'moderate' | 'dont-apply';
+export interface AIJobMatch {
+  score: number;
+  category: MatchCategory;
   recommendedResumeId: string | null;
   matchingSkills: string[];
   missingSkills: string[];
@@ -90,16 +67,39 @@ export interface JobMatch {
   analyzedAt: Date;
 }
 
-export interface JobMatch {
+export interface ScrapedJob {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  workModel: WorkModel | null;
+  salary: {
+    min: number;
+    max: number;
+    currency: string;
+  } | null;
+  url: string;
+  applyUrl?: string;
+  h1bSponsorship: boolean | null;
+  applicantCount: string;
+  postedAt: string;
+  scrapedAt: Date;
+  matchScore?: number;
+  rankDesc?: string;
+  jobSummary?: string;
+  aiMatch?: AIJobMatch;
+}
+
+export interface StoredJobMatch {
   id: string;
   jobId: string;
   userId: string;
   resumeId: string;
   score: number;
-  category: 'safe_apply' | 'moderate_apply' | 'dont_apply';
+  category: MatchCategory;
   reasons: string[];
   missingSkills: string[];
-  recommendedResumeId: string;
+  recommendedResumeId: string | null;
   matchedAt: Date;
 }
 
@@ -123,7 +123,9 @@ export interface ResumeChange {
 // Message types for extension communication
 export type MessageType =
   | 'SCRAPE_JOBS'
+  | 'MANUAL_SCRAPE'
   | 'JOBS_SCRAPED'
+  | 'JOBS_UPDATED'
   | 'ANALYZE_JOBS'
   | 'JOB_ANALYZED'
   | 'TAILOR_RESUME'
@@ -131,7 +133,7 @@ export type MessageType =
   | 'FIND_HIRING_MANAGER'
   | 'AUTH_STATE_CHANGED';
 
-export interface ExtensionMessage<T = any> {
+export interface ExtensionMessage<T = unknown> {
   type: MessageType;
   payload: T;
 }
@@ -143,4 +145,5 @@ export const STORAGE_KEYS = {
   JOB_MATCHES: 'job_matches',
   GEMINI_API_KEY: 'gemini_api_key',
   DEFAULT_RESUME_ID: 'default_resume_id',
+  LAST_SCRAPE_TIME: 'last_scrape_time',
 } as const;

@@ -1,19 +1,17 @@
-import { initializeApp, FirebaseApp } from 'firebase/app';
+import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { 
   getAuth, 
-  Auth, 
+  type Auth, 
   GoogleAuthProvider, 
-  signInWithCredential,
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  User as FirebaseUser
+  type User as FirebaseUser
 } from 'firebase/auth';
 import { 
-  getFirestore, 
-  Firestore,
+  type Firestore,
   collection,
   doc,
   getDoc,
@@ -30,11 +28,7 @@ import {
 } from 'firebase/firestore';
 import { 
   getStorage, 
-  FirebaseStorage,
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject
+  type FirebaseStorage
 } from 'firebase/storage';
 import type { User, Resume } from './types';
 
@@ -256,7 +250,7 @@ export async function updateResumeName(resumeId: string, name: string): Promise<
   });
 }
 
-export async function deleteResume(resumeId: string, userId: string): Promise<void> {
+export async function deleteResume(resumeId: string, _userId: string): Promise<void> {
   const { db } = initializeFirebase();
   
   // Delete from Firestore (PDF is stored as base64 in the document)

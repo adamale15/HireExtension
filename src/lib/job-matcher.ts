@@ -1,27 +1,97 @@
 import Groq from 'groq-sdk';
-import type { ScrapedJob, JobMatch, Resume } from './types';
+import type { AIJobMatch, Resume, ScrapedJob } from './types';
 
 let groq: Groq | null = null;
 
-// Initialize Groq
-const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+type JobMatcherImportMeta = ImportMeta & {
+  env?: {
+    VITE_GROQ_API_KEY?: string;
+  };
+};
+
+const apiKey = (import.meta as JobMatcherImportMeta).env?.VITE_GROQ_API_KEY;
 if (apiKey) {
   groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
   console.log('Groq AI initialized');
 }
 
-/**
- * Analyze a job against a resume using Gemini AI
- */
-export async function analyzeJobMatch(
-  job: ScrapedJob,
-  resume: Resume
-): Promise<JobMatch> {
+function ensureGroqClient(): Groq {
   if (!groq) {
     throw new Error('Groq API not initialized');
   }
 
-  console.log(`🤖 Analyzing match for "${job.title}" with resume "${resume.name}"`);
+  return groq;
+}
+
+function stripMarkdownFences(text: string) {
+  if (text.startsWith('```json')) {
+    return text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+  }
+
+  if (text.startsWith('```')) {
+    return text.replace(/```\n?/g, '');
+  }
+
+  return text;
+}
+
+function extractCompletionText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') {
+          return part;
+        }
+
+        if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') {
+          return part.text;
+        }
+
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+
+  return '';
+}
+
+function normalizeMatch(analysis: any, resumeId: string): AIJobMatch {
+  return {
+    score: Math.min(100, Math.max(0, Number(analysis.score) || 0)),
+    category:
+      analysis.category === 'safe' ||
+      analysis.category === 'moderate' ||
+      analysis.category === 'dont-apply'
+        ? analysis.category
+        : 'moderate',
+    recommendedResumeId: resumeId,
+    matchingSkills: Array.isArray(analysis.matchingSkills) ? analysis.matchingSkills : [],
+    missingSkills: Array.isArray(analysis.missingSkills) ? analysis.missingSkills : [],
+    experienceMatch: {
+      required: analysis.experienceMatch?.required || 'unknown',
+      yourLevel: analysis.experienceMatch?.yourLevel || 'unknown',
+      isMatch: Boolean(analysis.experienceMatch?.isMatch),
+    },
+    insights: Array.isArray(analysis.insights) ? analysis.insights : [],
+    analyzedAt: new Date(),
+  };
+}
+
+/**
+ * Analyze a single job against a single resume.
+ */
+export async function analyzeJobAgainstResume(
+  job: ScrapedJob,
+  resume: Resume,
+): Promise<AIJobMatch> {
+  const client = ensureGroqClient();
+
+  console.log(`Analyzing match for "${job.title}" with resume "${resume.name}"`);
 
   try {
     const prompt = `
@@ -40,16 +110,27 @@ Name: ${resume.name}
 Summary: ${resume.parsedProfile.summary}
 
 Skills (${resume.parsedProfile.skills.length}):
-${resume.parsedProfile.skills.map(s => `- ${s.name} (${s.category}, ${s.yearsOfExperience}+ years)`).join('\n')}
+${resume.parsedProfile.skills
+  .map((skill) => `- ${skill.name} (${skill.category}, ${skill.yearsOfExperience || 0}+ years)`)
+  .join('\n')}
 
 Experience (${resume.parsedProfile.experience.length} positions):
-${resume.parsedProfile.experience.map(e => `
-- ${e.title} at ${e.company} (${e.startDate} to ${e.endDate})
-  ${e.bullets.slice(0, 2).join('. ')}
-`).join('\n')}
+${resume.parsedProfile.experience
+  .map(
+    (experience) => `
+- ${experience.title} at ${experience.company} (${experience.startDate} to ${experience.endDate})
+  ${experience.bullets.slice(0, 2).join('. ')}
+`,
+  )
+  .join('\n')}
 
 Education:
-${resume.parsedProfile.education.map(e => `- ${e.degree} in ${e.field} from ${e.institution} (${e.year})`).join('\n')}
+${resume.parsedProfile.education
+  .map(
+    (education) =>
+      `- ${education.degree} in ${education.field} from ${education.institution} (${education.year})`,
+  )
+  .join('\n')}
 
 Certifications: ${resume.parsedProfile.certifications.join(', ') || 'None'}
 
@@ -59,38 +140,32 @@ Provide a detailed match analysis in JSON format ONLY (no markdown, no code bloc
 {
   "score": <number 0-100>,
   "category": "<safe|moderate|dont-apply>",
-  "matchingSkills": ["skill1", "skill2", ...],
-  "missingSkills": ["skill1", "skill2", ...],
+  "matchingSkills": ["skill1", "skill2"],
+  "missingSkills": ["skill1", "skill2"],
   "experienceMatch": {
     "required": "<entry|mid|senior>",
     "yourLevel": "<entry|mid|senior>",
     "isMatch": <boolean>
   },
   "insights": [
-    "Insight 1 about why this is a good/bad match",
-    "Insight 2 about strengths",
-    "Insight 3 about gaps or concerns",
-    "Insight 4 about application tips"
+    "Insight 1",
+    "Insight 2",
+    "Insight 3",
+    "Insight 4"
   ]
 }
 
 SCORING GUIDELINES:
-- 80-100: Safe Apply (strong match, highly qualified)
-- 60-79: Moderate Apply (good match, worth applying)
-- 0-59: Don't Apply (poor match, not worth time)
+- 80-100: Safe Apply
+- 60-79: Moderate Apply
+- 0-59: Don't Apply
 
-Be honest and realistic. Consider:
-1. Technical skills match (most important)
-2. Experience level alignment
-3. Domain/industry experience
-4. Location and work model preferences
-5. Salary expectations vs current compensation
-
+Be honest and realistic. Consider technical skills first, then experience level, domain fit, work model, and salary fit.
 Return ONLY the JSON object.
 `;
 
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile', // Fast and high quality
+    const completion = await client.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'user',
@@ -102,39 +177,16 @@ Return ONLY the JSON object.
       top_p: 0.95,
     });
 
-    const text = completion.choices[0]?.message?.content?.trim() || '';
+    const text = extractCompletionText(completion.choices[0]?.message?.content);
 
     if (!text) {
       throw new Error('No response from Groq API');
     }
 
-    // Clean up response
-    let jsonText = text;
-    if (jsonText.startsWith('```json')) {
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-    } else if (jsonText.startsWith('```')) {
-      jsonText = jsonText.replace(/```\n?/g, '');
-    }
+    const analysis = JSON.parse(stripMarkdownFences(text));
+    const jobMatch = normalizeMatch(analysis, resume.id);
 
-    const analysis = JSON.parse(jsonText);
-
-    // Validate and return
-    const jobMatch: JobMatch = {
-      score: Math.min(100, Math.max(0, analysis.score)),
-      category: analysis.category,
-      recommendedResumeId: resume.id,
-      matchingSkills: analysis.matchingSkills || [],
-      missingSkills: analysis.missingSkills || [],
-      experienceMatch: analysis.experienceMatch || {
-        required: 'unknown',
-        yourLevel: 'unknown',
-        isMatch: false,
-      },
-      insights: analysis.insights || [],
-      analyzedAt: new Date(),
-    };
-
-    console.log(`  ✓ Match score: ${jobMatch.score}% (${jobMatch.category})`);
+    console.log(`Match score: ${jobMatch.score}% (${jobMatch.category})`);
     return jobMatch;
   } catch (error: any) {
     console.error('Error analyzing job match:', error);
@@ -143,28 +195,26 @@ Return ONLY the JSON object.
 }
 
 /**
- * Analyze a job against ALL user resumes and pick the best match
+ * Analyze a job against all resumes and return the strongest result.
  */
 export async function findBestResumeMatch(
   job: ScrapedJob,
-  resumes: Resume[]
-): Promise<JobMatch> {
+  resumes: Resume[],
+): Promise<AIJobMatch> {
   if (resumes.length === 0) {
     throw new Error('No resumes available for matching');
   }
 
-  console.log(`🎯 Finding best resume match for "${job.title}"...`);
+  console.log(`Finding best resume match for "${job.title}"...`);
 
-  // Analyze job against each resume
-  const matches: JobMatch[] = [];
+  const matches: AIJobMatch[] = [];
 
   for (const resume of resumes) {
     try {
-      const match = await analyzeJobMatch(job, resume);
+      const match = await analyzeJobAgainstResume(job, resume);
       matches.push(match);
 
-      // Small delay between API calls
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
       console.error(`Error analyzing with resume "${resume.name}":`, error);
     }
@@ -174,39 +224,38 @@ export async function findBestResumeMatch(
     throw new Error('Failed to analyze job with any resume');
   }
 
-  // Return the best match (highest score)
-  matches.sort((a, b) => b.score - a.score);
+  matches.sort((left, right) => right.score - left.score);
   const bestMatch = matches[0];
 
-  console.log(`  ✓ Best match: Resume #${bestMatch.recommendedResumeId} (${bestMatch.score}%)`);
+  console.log(
+    `Best match: Resume #${bestMatch.recommendedResumeId || 'unknown'} (${bestMatch.score}%)`,
+  );
   return bestMatch;
 }
 
 /**
- * Batch analyze multiple jobs (with rate limiting)
+ * Batch analyze multiple jobs and keep already-scored jobs intact.
  */
 export async function analyzeAllJobs(
   jobs: ScrapedJob[],
   resumes: Resume[],
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
 ): Promise<ScrapedJob[]> {
-  console.log(`\n🚀 Starting AI job matching for ${jobs.length} jobs...`);
+  console.log(`Starting AI job matching for ${jobs.length} jobs...`);
 
   const analyzedJobs: ScrapedJob[] = [];
 
-  for (let i = 0; i < jobs.length; i++) {
-    const job = jobs[i];
+  for (let index = 0; index < jobs.length; index += 1) {
+    const job = jobs[index];
 
     try {
-      // Skip if already analyzed
       if (job.aiMatch) {
-        console.log(`⏭️  Skipping "${job.title}" (already analyzed)`);
         analyzedJobs.push(job);
+        onProgress?.(index + 1, jobs.length);
         continue;
       }
 
-      console.log(`\n[${i + 1}/${jobs.length}] Analyzing: ${job.title}`);
-
+      console.log(`[${index + 1}/${jobs.length}] Analyzing: ${job.title}`);
       const match = await findBestResumeMatch(job, resumes);
 
       analyzedJobs.push({
@@ -214,22 +263,18 @@ export async function analyzeAllJobs(
         aiMatch: match,
       });
 
-      // Progress callback
-      if (onProgress) {
-        onProgress(i + 1, jobs.length);
-      }
+      onProgress?.(index + 1, jobs.length);
 
-      // Rate limiting: 1 request per 2 seconds (30 per minute)
-      if (i < jobs.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      if (index < jobs.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } catch (error: any) {
       console.error(`Error analyzing job "${job.title}":`, error);
-      // Keep job without AI match
       analyzedJobs.push(job);
+      onProgress?.(index + 1, jobs.length);
     }
   }
 
-  console.log(`\n✅ Finished analyzing ${analyzedJobs.length} jobs`);
+  console.log(`Finished analyzing ${analyzedJobs.length} jobs`);
   return analyzedJobs;
 }

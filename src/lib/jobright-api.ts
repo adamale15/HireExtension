@@ -138,7 +138,7 @@ export async function fetchAllRecommendedJobs(): Promise<ScrapedJob[]> {
         
         // Determine the best URL to use for applying
         // Priority: applyLink > originalUrl
-        let applyUrl = job.applyLink || job.originalUrl;
+        let applyUrl: string | undefined = job.applyLink || job.originalUrl || undefined;
         
         // If no direct URL or it points back to Jobright, leave as undefined
         if (!applyUrl || applyUrl.includes('jobright.ai')) {
