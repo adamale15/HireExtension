@@ -1,46 +1,52 @@
 import { useState, useCallback } from 'react';
+import type { ThemeMode } from '../lib/types';
 
 interface ResumeUploaderProps {
   onUpload: (file: File, name: string) => Promise<void>;
   loading: boolean;
+  themeMode: ThemeMode;
 }
 
-export function ResumeUploader({ onUpload, loading }: ResumeUploaderProps) {
+export function ResumeUploader({ onUpload, loading, themeMode }: ResumeUploaderProps) {
+  const isDark = themeMode === 'dark';
   const [dragActive, setDragActive] = useState(false);
   const [resumeName, setResumeName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+  const handleDrag = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type === 'dragenter' || event.type === 'dragover') {
       setDragActive(true);
-    } else if (e.type === 'dragleave') {
+    } else if (event.type === 'dragleave') {
       setDragActive(false);
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDragActive(false);
 
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      const file = files[0];
-      if (file.type === 'application/pdf') {
-        setSelectedFile(file);
-        if (!resumeName) {
-          setResumeName(file.name.replace('.pdf', ''));
+      const files = event.dataTransfer.files;
+      if (files && files[0]) {
+        const file = files[0];
+        if (file.type === 'application/pdf') {
+          setSelectedFile(file);
+          if (!resumeName) {
+            setResumeName(file.name.replace('.pdf', ''));
+          }
+        } else {
+          alert('Please upload a PDF file');
         }
-      } else {
-        alert('Please upload a PDF file');
       }
-    }
-  }, [resumeName]);
+    },
+    [resumeName],
+  );
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
     if (files && files[0]) {
       const file = files[0];
       if (file.type === 'application/pdf') {
@@ -55,7 +61,10 @@ export function ResumeUploader({ onUpload, loading }: ResumeUploaderProps) {
   };
 
   const handleUpload = async () => {
-    if (!selectedFile || !resumeName) return;
+    if (!selectedFile || !resumeName) {
+      return;
+    }
+
     await onUpload(selectedFile, resumeName);
     setSelectedFile(null);
     setResumeName('');
@@ -64,11 +73,15 @@ export function ResumeUploader({ onUpload, loading }: ResumeUploaderProps) {
   return (
     <div className="space-y-4">
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          dragActive
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
-        }`}
+        className="rounded-[26px] border-2 border-dashed p-8 text-center transition-colors"
+        style={{
+          borderColor: dragActive ? 'var(--accent)' : 'var(--border-strong)',
+          background: dragActive
+            ? 'var(--accent-soft)'
+            : isDark
+              ? 'rgba(15, 23, 42, 0.46)'
+              : 'rgba(248, 250, 252, 0.95)',
+        }}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
@@ -83,35 +96,50 @@ export function ResumeUploader({ onUpload, loading }: ResumeUploaderProps) {
           disabled={loading}
         />
         <label htmlFor="resume-upload" className="cursor-pointer">
-          <div className="text-6xl mb-4">📄</div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <div
+            className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[24px] text-sm font-semibold uppercase tracking-[0.24em]"
+            style={{
+              background: 'var(--surface-strong)',
+              border: '1px solid var(--border)',
+              color: 'var(--accent)',
+            }}
+          >
+            PDF
+          </div>
+          <h3 className="mb-2 text-lg font-semibold text-[var(--text-strong)]">
             {selectedFile ? selectedFile.name : 'Upload Resume PDF'}
           </h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Drag and drop or click to browse
-          </p>
-          <button
-            type="button"
-            className="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            disabled={loading}
+          <p className="mb-4 text-sm text-[var(--text)]">Drag and drop or click to browse</p>
+          <span
+            className="inline-block rounded-2xl px-6 py-2 text-sm font-medium text-white"
+            style={{
+              background: isDark
+                ? 'linear-gradient(135deg, #38bdf8, #0f172a)'
+                : 'linear-gradient(135deg, #0f172a, #0369a1)',
+            }}
           >
-            Choose File
-          </button>
+            Choose file
+          </span>
         </label>
       </div>
 
       {selectedFile && (
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Resume Name
+            <label className="mb-1 block text-sm font-medium text-[var(--text)]">
+              Resume name
             </label>
             <input
               type="text"
               value={resumeName}
-              onChange={(e) => setResumeName(e.target.value)}
+              onChange={(event) => setResumeName(event.target.value)}
               placeholder="e.g., Frontend Resume, Data Engineer Resume"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-2xl px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-sky-500"
+              style={{
+                border: '1px solid var(--border-strong)',
+                background: 'var(--surface-soft)',
+                color: 'var(--text-strong)',
+              }}
               disabled={loading}
             />
           </div>
@@ -120,15 +148,20 @@ export function ResumeUploader({ onUpload, loading }: ResumeUploaderProps) {
             <button
               onClick={handleUpload}
               disabled={loading || !resumeName}
-              className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="flex-1 rounded-2xl px-6 py-3 font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                background: isDark
+                  ? 'linear-gradient(135deg, #38bdf8, #0f172a)'
+                  : 'linear-gradient(135deg, #0f172a, #0369a1)',
+              }}
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   Parsing with AI...
                 </span>
               ) : (
-                'Upload & Parse Resume'
+                'Upload and parse resume'
               )}
             </button>
             <button
@@ -137,7 +170,12 @@ export function ResumeUploader({ onUpload, loading }: ResumeUploaderProps) {
                 setResumeName('');
               }}
               disabled={loading}
-              className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="rounded-2xl px-6 py-3 transition-colors disabled:opacity-50"
+              style={{
+                border: '1px solid var(--border-strong)',
+                background: 'var(--surface-strong)',
+                color: 'var(--text)',
+              }}
             >
               Cancel
             </button>

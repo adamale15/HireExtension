@@ -1,5 +1,6 @@
 export type WorkModel = 'remote' | 'onsite' | 'hybrid';
 export type MatchCategory = 'safe' | 'moderate' | 'dont-apply';
+export type ThemeMode = 'light' | 'dark';
 
 // User related types
 export interface User {
@@ -108,15 +109,23 @@ export interface TailoredResume {
   originalResumeId: string;
   jobId: string;
   userId: string;
+  overview: string;
+  strengthsToKeep: string[];
+  priorityGaps: string[];
   changes: ResumeChange[];
   tailoredPdfUrl: string | null;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ResumeChange {
+  id: string;
   section: string;
+  title: string;
   original: string;
   tailored: string;
+  reason: string;
+  impact: string;
   accepted: boolean;
 }
 
@@ -143,7 +152,9 @@ export const STORAGE_KEYS = {
   USER_SESSION: 'user_session',
   SCRAPED_JOBS: 'scraped_jobs',
   JOB_MATCHES: 'job_matches',
+  TAILORED_RESUMES: 'tailored_resumes',
   GEMINI_API_KEY: 'gemini_api_key',
   DEFAULT_RESUME_ID: 'default_resume_id',
+  THEME_MODE: 'theme_mode',
   LAST_SCRAPE_TIME: 'last_scrape_time',
 } as const;

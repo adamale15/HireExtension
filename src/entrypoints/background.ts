@@ -3,12 +3,6 @@ import { STORAGE_KEYS } from '../lib/types';
 export default defineBackground(() => {
   console.log('HireExtension background worker started');
 
-  browser.action.onClicked.addListener(async (tab) => {
-    if (browser.sidePanel) {
-      await browser.sidePanel.open({ windowId: tab.windowId });
-    }
-  });
-
   browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     console.log('Background received message:', message);
 
@@ -60,13 +54,16 @@ export default defineBackground(() => {
   async function handleAnalyzeJobs(_payload: { jobs: unknown[]; resumes: unknown[] }) {
     return {
       success: true,
-      message: 'Use the side panel jobs workspace to run AI analysis.',
+      message: 'Use the popup workspace to run AI analysis.',
     };
   }
 
   async function handleTailorResume(payload: { resumeId: string; jobId: string }) {
     console.log('Tailor resume requested:', payload);
-    return { success: true, message: 'Resume tailoring is planned for a later phase.' };
+    return {
+      success: true,
+      message: 'Use the popup workspace to generate resume tailoring suggestions.',
+    };
   }
 
   async function handleAuthStateChanged(user: unknown) {

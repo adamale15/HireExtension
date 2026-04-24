@@ -1,5 +1,12 @@
 import { useMemo, useState } from 'react';
-import type { MatchCategory, Resume, ScrapedJob, WorkModel } from '../lib/types';
+import type {
+  MatchCategory,
+  Resume,
+  ScrapedJob,
+  TailoredResume,
+  ThemeMode,
+  WorkModel,
+} from '../lib/types';
 
 type CategoryFilter = MatchCategory | 'all' | 'unanalyzed';
 type SortOption = 'recent' | 'match-desc' | 'match-asc' | 'company';
@@ -10,10 +17,20 @@ interface JobListProps {
   defaultResumeId: string | null;
   onJobClick?: (job: ScrapedJob) => void;
   onAnalyzeJob?: (job: ScrapedJob, resumeId?: string) => Promise<void>;
+  onTailorResume?: (job: ScrapedJob, resumeId?: string) => Promise<void>;
   loading?: boolean;
   analyzing?: boolean;
   activeJobId?: string | null;
+  tailoring?: boolean;
+  activeTailoringKey?: string | null;
   getResumeName?: (resumeId: string | null) => string | null;
+  getTailoredResume?: (jobId: string, resumeId: string) => TailoredResume | null;
+  onToggleTailoredChange?: (tailoredResumeId: string, changeId: string) => Promise<void>;
+  themeMode: ThemeMode;
+}
+
+function getTailoringStateKey(jobId: string, resumeId: string) {
+  return `${jobId}:${resumeId}`;
 }
 
 export function JobList({
@@ -22,16 +39,24 @@ export function JobList({
   defaultResumeId,
   onJobClick,
   onAnalyzeJob,
+  onTailorResume,
   loading,
   analyzing,
   activeJobId,
+  tailoring,
+  activeTailoringKey,
   getResumeName,
+  getTailoredResume,
+  onToggleTailoredChange,
+  themeMode,
 }: JobListProps) {
+  const isDark = themeMode === 'dark';
   const [workModelFilter, setWorkModelFilter] = useState<'all' | WorkModel>('all');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [selectedJob, setSelectedJob] = useState<ScrapedJob | null>(null);
+  const [selectedTailoringJob, setSelectedTailoringJob] = useState<ScrapedJob | null>(null);
   const [selectedResumeByJob, setSelectedResumeByJob] = useState<Record<string, string>>({});
 
   const categoryCount = useMemo(
@@ -90,15 +115,15 @@ export function JobList({
     });
   }, [categoryFilter, jobs, searchQuery, sortOption, workModelFilter]);
 
-  const getSelectedResumeId = (job: ScrapedJob) => {
-    return (
-      selectedResumeByJob[job.id] ||
-      job.aiMatch?.recommendedResumeId ||
-      defaultResumeId ||
-      resumes[0]?.id ||
-      ''
-    );
-  };
+  const getSelectedResumeId = (job: ScrapedJob) =>
+    selectedResumeByJob[job.id] ||
+    job.aiMatch?.recommendedResumeId ||
+    defaultResumeId ||
+    resumes[0]?.id ||
+    '';
+
+  const getSelectedResume = (job: ScrapedJob) =>
+    resumes.find((resume) => resume.id === getSelectedResumeId(job)) || null;
 
   const handleResumeChange = (jobId: string, resumeId: string) => {
     setSelectedResumeByJob((current) => ({
@@ -107,18 +132,10 @@ export function JobList({
     }));
   };
 
-  const openDetails = (job: ScrapedJob) => {
-    setSelectedJob(job);
-  };
-
-  const closeDetails = () => {
-    setSelectedJob(null);
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-sky-500"></div>
       </div>
     );
   }
@@ -126,7 +143,7 @@ export function JobList({
   if (jobs.length === 0) {
     return (
       <div className="px-4 py-12 text-center">
-        <div className="mb-4 text-gray-400">
+        <div className="mb-4 text-[var(--text-soft)]">
           <svg className="mx-auto h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
@@ -136,15 +153,20 @@ export function JobList({
             />
           </svg>
         </div>
-        <h3 className="mb-2 text-lg font-semibold text-gray-900">No jobs found yet</h3>
-        <p className="mb-4 text-gray-600">
+        <h3 className="mb-2 text-lg font-semibold text-[var(--text-strong)]">No jobs found yet</h3>
+        <p className="mb-4 text-[var(--text)]">
           Sign in to Jobright and open the recommended jobs page to start scanning.
         </p>
         <a
           href="https://jobright.ai/jobs/recommend"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+          className="inline-flex items-center rounded-2xl px-4 py-2 text-white transition-colors"
+          style={{
+            background: isDark
+              ? 'linear-gradient(135deg, #38bdf8, #0f172a)'
+              : 'linear-gradient(135deg, #0f172a, #0369a1)',
+          }}
         >
           Open Recommended Jobs
           <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -169,13 +191,23 @@ export function JobList({
             placeholder="Search jobs, companies, locations, or summary..."
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-2xl px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-sky-500"
+            style={{
+              border: '1px solid var(--border-strong)',
+              background: 'var(--surface-soft)',
+              color: 'var(--text-strong)',
+            }}
           />
 
           <select
             value={sortOption}
             onChange={(event) => setSortOption(event.target.value as SortOption)}
-            className="rounded-lg border border-gray-300 px-4 py-2 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+            className="rounded-2xl px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-sky-500"
+            style={{
+              border: '1px solid var(--border-strong)',
+              background: 'var(--surface-soft)',
+              color: 'var(--text-strong)',
+            }}
           >
             <option value="recent">Newest first</option>
             <option value="match-desc">Highest match score</option>
@@ -223,34 +255,51 @@ export function JobList({
             ))}
           </div>
 
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-[var(--text)]">
             Showing {filteredJobs.length} of {jobs.length} jobs
           </div>
         </div>
 
         {filteredJobs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center">
-            <p className="font-medium text-gray-900">No jobs match the current filters.</p>
-            <p className="mt-1 text-sm text-gray-600">
+          <div
+            className="rounded-[24px] px-4 py-10 text-center"
+            style={{
+              border: '1px dashed var(--border-strong)',
+              background: 'var(--surface-soft)',
+            }}
+          >
+            <p className="font-medium text-[var(--text-strong)]">No jobs match the current filters.</p>
+            <p className="mt-1 text-sm text-[var(--text)]">
               Try clearing a filter, changing the search, or re-running analysis on more jobs.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredJobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                resumes={resumes}
-                selectedResumeId={getSelectedResumeId(job)}
-                onResumeChange={handleResumeChange}
+            {filteredJobs.map((job) => {
+              const selectedResumeId = getSelectedResumeId(job);
+
+              return (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  resumes={resumes}
+                  selectedResumeId={selectedResumeId}
+                  onResumeChange={handleResumeChange}
                 onAnalyzeJob={onAnalyzeJob}
                 onClick={() => onJobClick?.(job)}
-                onViewDetails={() => openDetails(job)}
+                onViewDetails={() => setSelectedJob(job)}
+                onViewTailoring={() => setSelectedTailoringJob(job)}
                 getResumeName={getResumeName}
+                themeMode={themeMode}
                 isAnalyzing={analyzing && activeJobId === job.id}
-              />
-            ))}
+                  isTailoring={
+                    tailoring &&
+                    activeTailoringKey === getTailoringStateKey(job.id, selectedResumeId)
+                  }
+                  hasTailoring={Boolean(getTailoredResume?.(job.id, selectedResumeId))}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -259,8 +308,45 @@ export function JobList({
         <MatchDetailsModal
           job={selectedJob}
           resumeName={getResumeName?.(selectedJob.aiMatch?.recommendedResumeId || null) || null}
-          onClose={closeDetails}
+          onClose={() => setSelectedJob(null)}
           onOpenJob={() => onJobClick?.(selectedJob)}
+          themeMode={themeMode}
+        />
+      )}
+
+      {selectedTailoringJob && (
+        <ResumeTailoringModal
+          job={selectedTailoringJob}
+          resumes={resumes}
+          selectedResumeId={getSelectedResumeId(selectedTailoringJob)}
+          tailoredResume={
+            getTailoredResume?.(
+              selectedTailoringJob.id,
+              getSelectedResumeId(selectedTailoringJob),
+            ) || null
+          }
+          onResumeChange={(resumeId) => handleResumeChange(selectedTailoringJob.id, resumeId)}
+          onGenerate={async () => {
+            const resume = getSelectedResume(selectedTailoringJob);
+
+            if (!resume) {
+              return;
+            }
+
+            await onTailorResume?.(selectedTailoringJob, resume.id);
+          }}
+          onToggleAccepted={onToggleTailoredChange}
+          onOpenJob={() => onJobClick?.(selectedTailoringJob)}
+          onClose={() => setSelectedTailoringJob(null)}
+          themeMode={themeMode}
+          isTailoring={
+            tailoring &&
+            activeTailoringKey ===
+              getTailoringStateKey(
+                selectedTailoringJob.id,
+                getSelectedResumeId(selectedTailoringJob),
+              )
+          }
         />
       )}
     </>
@@ -275,8 +361,12 @@ interface JobCardProps {
   onAnalyzeJob?: (job: ScrapedJob, resumeId?: string) => Promise<void>;
   onClick?: () => void;
   onViewDetails: () => void;
+  onViewTailoring: () => void;
   getResumeName?: (resumeId: string | null) => string | null;
+  themeMode: ThemeMode;
   isAnalyzing?: boolean;
+  isTailoring?: boolean;
+  hasTailoring?: boolean;
 }
 
 function JobCard({
@@ -287,9 +377,14 @@ function JobCard({
   onAnalyzeJob,
   onClick,
   onViewDetails,
+  onViewTailoring,
   getResumeName,
+  themeMode,
   isAnalyzing,
+  isTailoring,
+  hasTailoring,
 }: JobCardProps) {
+  const isDark = themeMode === 'dark';
   const hasAIMatch = Boolean(job.aiMatch);
   const recommendedResumeName = getResumeName?.(job.aiMatch?.recommendedResumeId || null);
 
@@ -311,9 +406,17 @@ function JobCard({
   return (
     <div
       onClick={onClick}
-      className={`rounded-xl border-2 bg-white p-4 shadow-sm transition-shadow hover:shadow-md ${
-        hasAIMatch ? categoryStyles[job.aiMatch!.category] : 'border-gray-200'
+      className={`rounded-[24px] border-2 p-4 shadow-sm transition-shadow hover:shadow-md ${
+        hasAIMatch ? categoryStyles[job.aiMatch!.category] : ''
       }`}
+      style={
+        hasAIMatch
+          ? undefined
+          : {
+              borderColor: 'var(--border-strong)',
+              background: 'var(--surface-strong)',
+            }
+      }
     >
       {hasAIMatch && (
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -327,11 +430,14 @@ function JobCard({
               {job.aiMatch!.category === 'moderate' && 'MODERATE'}
               {job.aiMatch!.category === 'dont-apply' && "DON'T APPLY"}
             </span>
-            <span className="text-sm font-bold text-gray-900">{job.aiMatch!.score}% match</span>
+            <span className="text-sm font-bold text-[var(--text-strong)]">{job.aiMatch!.score}% match</span>
           </div>
 
           {recommendedResumeName && (
-            <span className="rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+            <span
+              className="rounded-full px-2.5 py-1 text-xs font-medium"
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+            >
               Best resume: {recommendedResumeName}
             </span>
           )}
@@ -340,8 +446,8 @@ function JobCard({
 
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-semibold text-gray-900">{job.title}</h3>
-          <p className="text-sm text-gray-600">{job.company}</p>
+          <h3 className="truncate font-semibold text-[var(--text-strong)]">{job.title}</h3>
+          <p className="text-sm text-[var(--text)]">{job.company}</p>
         </div>
 
         {job.workModel && (
@@ -359,7 +465,7 @@ function JobCard({
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-[var(--text)]">
         <div className="flex items-center">
           <svg className="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -406,8 +512,11 @@ function JobCard({
       </div>
 
       {hasAIMatch && job.aiMatch!.insights.length > 0 && (
-        <div className="mb-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-          <p className="mb-1 font-medium text-gray-900">AI insight</p>
+        <div
+          className="mb-3 rounded-[18px] p-3 text-sm"
+          style={{ background: 'var(--surface-soft)', color: 'var(--text)' }}
+        >
+          <p className="mb-1 font-medium text-[var(--text-strong)]">AI insight</p>
           <p>{job.aiMatch!.insights[0]}</p>
         </div>
       )}
@@ -423,7 +532,10 @@ function JobCard({
             </span>
           ))}
           {job.aiMatch!.matchingSkills.length > 5 && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+            <span
+              className="rounded-full px-2 py-0.5 text-xs"
+              style={{ background: 'var(--surface-soft)', color: 'var(--text)' }}
+            >
               +{job.aiMatch!.matchingSkills.length - 5} more
             </span>
           )}
@@ -437,24 +549,34 @@ function JobCard({
           </span>
         )}
         {job.h1bSponsorship === false && (
-          <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-800">No H1B</span>
+          <span
+            className="rounded-full px-2 py-1"
+            style={{ background: 'var(--surface-soft)', color: 'var(--text-strong)' }}
+          >
+            No H1B
+          </span>
         )}
         <span className="rounded-full bg-blue-100 px-2 py-1 text-blue-800">
           {job.applicantCount} applicants
         </span>
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-gray-200 pt-3">
+      <div className="flex flex-col gap-3 border-t pt-3" style={{ borderTop: '1px solid var(--border)' }}>
         {resumes.length > 0 && (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            <label className="text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">
               Resume for this job
             </label>
             <select
               value={selectedResumeId}
               onClick={(event) => event.stopPropagation()}
               onChange={(event) => onResumeChange(job.id, event.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+              className="min-w-0 flex-1 rounded-2xl px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-500"
+              style={{
+                border: '1px solid var(--border-strong)',
+                background: 'var(--surface-soft)',
+                color: 'var(--text-strong)',
+              }}
             >
               {resumes.map((resume) => (
                 <option key={resume.id} value={resume.id}>
@@ -469,31 +591,66 @@ function JobCard({
                 void handleAnalyzeClick();
               }}
               disabled={isAnalyzing}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-2xl px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                background: isDark
+                  ? 'linear-gradient(135deg, #38bdf8, #0f172a)'
+                  : 'linear-gradient(135deg, #0f172a, #0369a1)',
+              }}
             >
               {isAnalyzing ? 'Analyzing...' : hasAIMatch ? 'Re-run with resume' : 'Analyze this job'}
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onViewTailoring();
+              }}
+              className="rounded-2xl px-4 py-2 text-sm font-medium transition-colors"
+              style={{
+                border: '1px solid var(--border-strong)',
+                background: 'var(--surface-soft)',
+                color: 'var(--text-strong)',
+              }}
+            >
+              {isTailoring ? 'Tailoring...' : hasTailoring ? 'Open tailoring' : 'Tailor resume'}
             </button>
           </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onViewDetails();
-            }}
-            className="text-sm font-medium text-slate-700 hover:text-slate-900"
-          >
-            {hasAIMatch ? 'View match details' : 'View job details'}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onViewDetails();
+              }}
+              className="text-sm font-medium text-[var(--text)]"
+            >
+              {hasAIMatch ? 'View match details' : 'View job details'}
+            </button>
+
+            {hasTailoring && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onViewTailoring();
+                }}
+                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                View tailoring
+              </button>
+            )}
+          </div>
 
           <a
             href={job.applyUrl || job.url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(event) => event.stopPropagation()}
-            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-700"
+            className="flex items-center text-sm font-medium text-[var(--accent)]"
           >
             {job.applyUrl ? 'Apply now' : 'View job'}
             <svg className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -516,31 +673,61 @@ interface MatchDetailsModalProps {
   resumeName: string | null;
   onClose: () => void;
   onOpenJob?: () => void;
+  themeMode: ThemeMode;
 }
 
-function MatchDetailsModal({ job, resumeName, onClose, onOpenJob }: MatchDetailsModalProps) {
+function MatchDetailsModal({
+  job,
+  resumeName,
+  onClose,
+  onOpenJob,
+  themeMode,
+}: MatchDetailsModalProps) {
+  const isDark = themeMode === 'dark';
   const match = job.aiMatch;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-6 py-5">
+      <div
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[28px] shadow-2xl"
+        style={{
+          background: 'var(--surface-strong)',
+          border: '1px solid var(--border)',
+          color: 'var(--text)',
+        }}
+      >
+        <div
+          className="sticky top-0 flex items-start justify-between gap-4 px-6 py-5"
+          style={{
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--surface-strong)',
+          }}
+        >
           <div>
-            <p className="text-sm font-medium uppercase tracking-wide text-blue-600">{job.company}</p>
-            <h2 className="mt-1 text-2xl font-bold text-gray-900">{job.title}</h2>
-            <p className="mt-1 text-sm text-gray-600">
-              {job.location}
-              {job.workModel ? ` • ${job.workModel}` : ''}
+            <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">{job.company}</p>
+            <h2 className="mt-1 text-2xl font-bold text-[var(--text-strong)]">{job.title}</h2>
+            <p className="mt-1 text-sm text-[var(--text)]">
+              {[job.location, job.workModel].filter(Boolean).join(' | ')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            className="rounded-full p-2"
+            style={{
+              border: '1px solid var(--border-strong)',
+              background: 'var(--surface-soft)',
+              color: 'var(--text)',
+            }}
           >
             <span className="sr-only">Close details</span>
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -567,11 +754,15 @@ function MatchDetailsModal({ job, resumeName, onClose, onOpenJob }: MatchDetails
                         : 'red'
                   }
                 />
-                <StatCard label="Recommended resume" value={resumeName || 'Selected resume'} tone="slate" />
+                <StatCard
+                  label="Recommended resume"
+                  value={resumeName || 'Selected resume'}
+                  tone="slate"
+                />
               </div>
 
-              <div className="rounded-xl border border-gray-200 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+              <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)' }}>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-soft)]">
                   Experience alignment
                 </h3>
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -599,46 +790,59 @@ function MatchDetailsModal({ job, resumeName, onClose, onOpenJob }: MatchDetails
                 />
               </div>
 
-              <div className="rounded-xl border border-gray-200 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+              <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)' }}>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-soft)]">
                   Full AI insights
                 </h3>
                 <div className="mt-3 space-y-2">
                   {match.insights.length > 0 ? (
                     match.insights.map((insight, index) => (
-                      <div key={`${job.id}-insight-${index}`} className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                      <div
+                        key={`${job.id}-insight-${index}`}
+                        className="rounded-lg p-3 text-sm"
+                        style={{ background: 'var(--surface-soft)', color: 'var(--text)' }}
+                      >
                         {insight}
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-600">No detailed insights were returned yet.</p>
+                    <p className="text-sm text-[var(--text)]">No detailed insights were returned yet.</p>
                   )}
                 </div>
               </div>
             </>
           ) : (
-            <div className="rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-700">
-              This job has not been analyzed yet. Pick a resume from the card and run AI analysis to see detailed fit information here.
+            <div
+              className="rounded-xl p-5 text-sm"
+              style={{
+                border: '1px dashed var(--border-strong)',
+                color: 'var(--text)',
+              }}
+            >
+              This job has not been analyzed yet. Pick a resume from the card and run AI analysis
+              to see detailed fit information here.
             </div>
           )}
 
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)' }}>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-soft)]">
                 Job snapshot
               </h3>
-              <div className="mt-3 space-y-2 text-sm text-gray-700">
+              <div className="mt-3 space-y-2 text-sm text-[var(--text)]">
                 <p>
-                  <span className="font-medium text-gray-900">Posted:</span> {job.postedAt}
+                  <span className="font-medium text-[var(--text-strong)]">Posted:</span> {job.postedAt}
                 </p>
                 <p>
-                  <span className="font-medium text-gray-900">Applicants:</span> {job.applicantCount}
+                  <span className="font-medium text-[var(--text-strong)]">Applicants:</span>{' '}
+                  {job.applicantCount}
                 </p>
                 <p>
-                  <span className="font-medium text-gray-900">Work model:</span> {job.workModel || 'Unknown'}
+                  <span className="font-medium text-[var(--text-strong)]">Work model:</span>{' '}
+                  {job.workModel || 'Unknown'}
                 </p>
                 <p>
-                  <span className="font-medium text-gray-900">Salary:</span>{' '}
+                  <span className="font-medium text-[var(--text-strong)]">Salary:</span>{' '}
                   {job.salary
                     ? `$${(job.salary.min / 1000).toFixed(0)}K - $${(job.salary.max / 1000).toFixed(0)}K`
                     : 'Not listed'}
@@ -646,24 +850,300 @@ function MatchDetailsModal({ job, resumeName, onClose, onOpenJob }: MatchDetails
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)' }}>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-soft)]">
                 Next action
               </h3>
               <div className="mt-3 space-y-3">
-                <p className="text-sm text-gray-700">
-                  Open the listing to review the full description, requirements, and direct application path.
+                <p className="text-sm text-[var(--text)]">
+                  Open the listing to review the full description, requirements, and direct
+                  application path.
                 </p>
                 <button
                   type="button"
                   onClick={() => onOpenJob?.()}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                  className="rounded-2xl px-4 py-2 text-sm font-medium text-white"
+                  style={{
+                    background: isDark
+                      ? 'linear-gradient(135deg, #38bdf8, #0f172a)'
+                      : 'linear-gradient(135deg, #0f172a, #0369a1)',
+                  }}
                 >
                   Open job
                 </button>
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ResumeTailoringModalProps {
+  job: ScrapedJob;
+  resumes: Resume[];
+  selectedResumeId: string;
+  tailoredResume: TailoredResume | null;
+  onResumeChange: (resumeId: string) => void;
+  onGenerate: () => Promise<void>;
+  onToggleAccepted?: (tailoredResumeId: string, changeId: string) => Promise<void>;
+  onOpenJob?: () => void;
+  onClose: () => void;
+  themeMode: ThemeMode;
+  isTailoring?: boolean;
+}
+
+function ResumeTailoringModal({
+  job,
+  resumes,
+  selectedResumeId,
+  tailoredResume,
+  onResumeChange,
+  onGenerate,
+  onToggleAccepted,
+  onOpenJob,
+  onClose,
+  themeMode,
+  isTailoring,
+}: ResumeTailoringModalProps) {
+  const isDark = themeMode === 'dark';
+  const selectedResume = resumes.find((resume) => resume.id === selectedResumeId) || null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+      <div
+        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[28px] shadow-2xl"
+        style={{
+          background: 'var(--surface-strong)',
+          border: '1px solid var(--border)',
+          color: 'var(--text)',
+        }}
+      >
+        <div
+          className="sticky top-0 flex items-start justify-between gap-4 px-6 py-5"
+          style={{
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--surface-strong)',
+          }}
+        >
+          <div>
+            <p className="text-sm font-medium uppercase tracking-wide text-[var(--accent)]">
+              Resume tailoring
+            </p>
+            <h2 className="mt-1 text-2xl font-bold text-[var(--text-strong)]">{job.title}</h2>
+            <p className="mt-1 text-sm text-[var(--text)]">{job.company}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2"
+            style={{
+              border: '1px solid var(--border-strong)',
+              background: 'var(--surface-soft)',
+              color: 'var(--text)',
+            }}
+          >
+            <span className="sr-only">Close tailoring</span>
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-6 px-6 py-5">
+          <div className="rounded-xl p-4" style={{ border: '1px solid var(--border)' }}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-[var(--text-soft)]">
+                  Resume
+                </label>
+                <select
+                  value={selectedResumeId}
+                  onChange={(event) => onResumeChange(event.target.value)}
+                  className="mt-2 w-full rounded-2xl px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-500"
+                  style={{
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--surface-soft)',
+                    color: 'var(--text-strong)',
+                  }}
+                >
+                  {resumes.map((resume) => (
+                    <option key={resume.id} value={resume.id}>
+                      {resume.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void onGenerate()}
+                  disabled={!selectedResume || isTailoring}
+                  className="rounded-2xl px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{
+                    background: isDark
+                      ? 'linear-gradient(135deg, #38bdf8, #0f172a)'
+                      : 'linear-gradient(135deg, #0f172a, #0369a1)',
+                  }}
+                >
+                  {isTailoring
+                    ? 'Generating tailoring...'
+                    : tailoredResume
+                      ? 'Refresh suggestions'
+                      : 'Generate suggestions'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenJob?.()}
+                  className="rounded-2xl px-4 py-2 text-sm font-medium transition-colors"
+                  style={{
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--surface-soft)',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  Open job
+                </button>
+              </div>
+            </div>
+
+            {selectedResume && (
+              <p className="mt-3 text-sm text-[var(--text)]">
+                Suggestions are generated from{' '}
+                <span className="font-medium text-[var(--text-strong)]">{selectedResume.name}</span> and
+                stored locally for this job.
+              </p>
+            )}
+          </div>
+
+          {tailoredResume ? (
+            <>
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                  Best angle
+                </h3>
+                <p className="mt-2 text-sm text-blue-900">{tailoredResume.overview}</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <DetailSection
+                  title="Strengths to keep"
+                  items={tailoredResume.strengthsToKeep}
+                  emptyText="No specific strengths were called out."
+                  tone="green"
+                />
+                <DetailSection
+                  title="Priority gaps"
+                  items={tailoredResume.priorityGaps}
+                  emptyText="No major risks were identified."
+                  tone="red"
+                />
+              </div>
+
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                    Suggested rewrites
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {tailoredResume.changes.filter((change) => change.accepted).length}/
+                    {tailoredResume.changes.length} marked accepted
+                  </p>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Accepted changes are saved locally as checklist items only. Your stored resume and
+                  PDF stay unchanged for now.
+                </p>
+
+                <div className="mt-4 space-y-4">
+                  {tailoredResume.changes.map((change) => (
+                    <div
+                      key={change.id}
+                      className={`rounded-xl border p-4 ${
+                        change.accepted
+                          ? 'border-green-300 bg-green-50'
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            {change.section}
+                          </p>
+                          <h4 className="mt-1 text-base font-semibold text-gray-900">
+                            {change.title}
+                          </h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void onToggleAccepted?.(tailoredResume.id, change.id)}
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            change.accepted
+                              ? 'bg-green-200 text-green-900'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {change.accepted ? 'Accepted' : 'Mark accepted'}
+                        </button>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-lg bg-gray-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Current version
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+                            {change.original || 'No original text returned.'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-lg bg-slate-900 p-3 text-white">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                            Tailored version
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-50">
+                            {change.tailored || 'No tailored rewrite returned.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg bg-blue-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                            Why this helps
+                          </p>
+                          <p className="mt-2 text-sm text-blue-900">
+                            {change.reason || 'Reason not provided.'}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-amber-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            Expected impact
+                          </p>
+                          <p className="mt-2 text-sm text-amber-900">
+                            {change.impact || 'Impact not provided.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-700">
+              Generate tailoring suggestions to get a job-specific rewrite plan for the selected
+              resume. This phase focuses on structured edits you can apply manually, not PDF
+              regeneration yet.
+            </div>
+          )}
         </div>
       </div>
     </div>

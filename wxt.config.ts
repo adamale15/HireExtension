@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     name: "HireExtension",
     description: "AI-powered job matching assistant for Jobright",
-    permissions: ["storage", "sidePanel", "activeTab", "identity"],
+    permissions: ["storage", "activeTab", "identity"],
     host_permissions: ["*://jobright.ai/*", "*://www.linkedin.com/*"],
     oauth2: {
       // IMPORTANT: Replace with your actual OAuth client ID from Google Cloud Console

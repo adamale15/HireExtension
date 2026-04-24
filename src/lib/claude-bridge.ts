@@ -1,4 +1,11 @@
-import type { AIJobMatch, MatchCategory, ParsedProfile, Resume, ScrapedJob } from './types';
+import type {
+  AIJobMatch,
+  MatchCategory,
+  ParsedProfile,
+  Resume,
+  ResumeChange,
+  ScrapedJob,
+} from './types';
 
 type ClaudeBridgeImportMeta = ImportMeta & {
   env?: {
@@ -138,6 +145,50 @@ function normalizeMatch(payload: any, resumeId: string): AIJobMatch {
   };
 }
 
+function normalizeResumeChanges(value: unknown): ResumeChange[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((change: any, index) => {
+      if (!change || typeof change !== 'object') {
+        return null;
+      }
+
+      return {
+        id:
+          typeof change.id === 'string' && change.id.trim()
+            ? change.id
+            : `change-${index + 1}`,
+        section: typeof change.section === 'string' ? change.section : 'general',
+        title: typeof change.title === 'string' ? change.title : `Suggestion ${index + 1}`,
+        original: typeof change.original === 'string' ? change.original : '',
+        tailored: typeof change.tailored === 'string' ? change.tailored : '',
+        reason: typeof change.reason === 'string' ? change.reason : '',
+        impact: typeof change.impact === 'string' ? change.impact : '',
+        accepted: false,
+      };
+    })
+    .filter((change): change is ResumeChange => Boolean(change));
+}
+
+export interface TailoredResumeDraft {
+  overview: string;
+  strengthsToKeep: string[];
+  priorityGaps: string[];
+  changes: ResumeChange[];
+}
+
+function normalizeTailoredResume(payload: any): TailoredResumeDraft {
+  return {
+    overview: typeof payload.overview === 'string' ? payload.overview : '',
+    strengthsToKeep: normalizeStringArray(payload.strengthsToKeep),
+    priorityGaps: normalizeStringArray(payload.priorityGaps),
+    changes: normalizeResumeChanges(payload.changes),
+  };
+}
+
 function decodeResumePdf(resume: Resume): File {
   const [header, base64] = resume.pdfUrl.split(',', 2);
 
@@ -238,6 +289,36 @@ Scoring:
 Focus on actual fit, gaps, and concrete improvements. The requested model is ${config.model}. Return JSON only.`;
 }
 
+function buildResumeTailoringInstructions(config: ReturnType<typeof getBridgeConfig>) {
+  return `You are an expert resume writer. Rewrite the uploaded resume for the supplied job description and return ONLY valid JSON.
+
+Use this exact shape:
+{
+  "overview": "One short paragraph describing the strongest angle for this application.",
+  "strengthsToKeep": ["existing strength worth preserving"],
+  "priorityGaps": ["important gap to address carefully"],
+  "changes": [
+    {
+      "id": "summary-1",
+      "section": "summary|experience|skills|education",
+      "title": "Short label for the change",
+      "original": "Original resume text or a short excerpt",
+      "tailored": "Improved version tailored to the job",
+      "reason": "Why this change improves alignment",
+      "impact": "Expected outcome from making the change"
+    }
+  ]
+}
+
+Rules:
+- Return 4 to 8 high-value changes.
+- Keep changes truthful to the uploaded resume. Do not invent employers, dates, tools, degrees, or achievements.
+- Prefer stronger framing, reordered emphasis, sharper bullets, and keyword alignment over fabrication.
+- Use short, concrete text for each field.
+- The requested model is ${config.model}.
+- Return JSON only with no markdown fences.`;
+}
+
 async function postResumeAnalysis(
   file: File,
   jobDescription: string,
@@ -295,6 +376,20 @@ export async function analyzeResumeAgainstJobWithClaude(
   );
   const parsed = parseJsonAnalysis<any>(response.analysis);
   return normalizeMatch(parsed, resume.id);
+}
+
+export async function tailorResumeForJobWithClaude(
+  job: ScrapedJob,
+  resume: Resume,
+): Promise<TailoredResumeDraft> {
+  const config = getBridgeConfig();
+  const response = await postResumeAnalysis(
+    decodeResumePdf(resume),
+    buildJobDescription(job),
+    buildResumeTailoringInstructions(config),
+  );
+  const parsed = parseJsonAnalysis<any>(response.analysis);
+  return normalizeTailoredResume(parsed);
 }
 
 export async function testClaudeBridgeConnection(): Promise<boolean> {

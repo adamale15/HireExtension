@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from './types';
+import type { ThemeMode } from './types';
 
 export async function getFromStorage<T>(key: string): Promise<T | null> {
   const result = await browser.storage.local.get(key);
@@ -56,4 +57,12 @@ export async function saveDefaultResumeId(resumeId: string): Promise<void> {
 
 export async function getDefaultResumeId(): Promise<string | null> {
   return getFromStorage<string>(STORAGE_KEYS.DEFAULT_RESUME_ID);
+}
+
+export async function saveThemeMode(themeMode: ThemeMode): Promise<void> {
+  await setInStorage(STORAGE_KEYS.THEME_MODE, themeMode);
+}
+
+export async function getThemeMode(): Promise<ThemeMode | null> {
+  return getFromStorage<ThemeMode>(STORAGE_KEYS.THEME_MODE);
 }
