@@ -1,0 +1,9 @@
+.git
+.cursor
+.qodo
+.wxt
+.output
+dist
+node_modules
+.pnpm-store
+*.zip

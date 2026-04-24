@@ -7,7 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useJobMatching } from '../../hooks/useJobMatching';
 import { useJobs } from '../../hooks/useJobs';
 import { useResumes } from '../../hooks/useResumes';
-import { isGeminiInitialized, parseResumePDF } from '../../lib/gemini';
+import { isClaudeBridgeConfigured, parseResumeWithClaude } from '../../lib/claude-bridge';
 import { STORAGE_KEYS } from '../../lib/types';
 import type { ScrapedJob, User } from '../../lib/types';
 
@@ -302,8 +302,8 @@ function ResumesTab({ userId }: { userId?: string }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleUpload = async (file: File, name: string) => {
-    if (!isGeminiInitialized()) {
-      setUploadError('Gemini API is not configured. Add it in .env.local before uploading.');
+    if (!isClaudeBridgeConfigured()) {
+      setUploadError('Claude bridge is not configured. Add the bridge settings in .env.local before uploading.');
       return;
     }
 
@@ -311,7 +311,7 @@ function ResumesTab({ userId }: { userId?: string }) {
       setUploading(true);
       setUploadError(null);
 
-      const parsedProfile = await parseResumePDF(file);
+      const parsedProfile = await parseResumeWithClaude(file);
       await uploadResume(file, name, parsedProfile);
     } catch (err: any) {
       console.error('Error uploading resume:', err);
@@ -399,10 +399,10 @@ function SettingsTab({ user }: { user: User | null }) {
         <div className="rounded-lg bg-white p-6 shadow">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">AI configuration</h2>
           <p className="mb-3 text-sm text-gray-600">
-            Resume parsing currently reads the Gemini key from <code>.env.local</code>. Job matching uses the configured Groq key for analysis.
+            Resume parsing and job matching now use your local Claude bridge from <code>.env.local</code>.
           </p>
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            In-panel API key storage is not wired yet, so this screen is informational for now.
+            Set the bridge URL, token, and model in <code>.env.local</code>. In-panel API configuration is still informational only.
           </div>
         </div>
 

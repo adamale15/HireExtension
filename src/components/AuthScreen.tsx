@@ -154,7 +154,7 @@ export function AuthScreen({
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-500 mt-0.5">✓</span>
-              <span>Resume tailoring with Gemini AI</span>
+              <span>Resume and job analysis with your local Claude bridge</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-500 mt-0.5">✓</span>

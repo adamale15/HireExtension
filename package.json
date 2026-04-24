@@ -6,16 +6,18 @@
   "scripts": {
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
+    "watch": "wxt build --watch",
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "docker:build": "docker compose run --rm extension-build",
+    "docker:watch": "docker compose up extension-watch",
+    "docker:build:firefox": "docker compose run --rm extension-firefox-build",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
     "firebase": "^11.2.0",
-    "groq-sdk": "^1.1.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
